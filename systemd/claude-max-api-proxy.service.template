@@ -1,0 +1,23 @@
+[Unit]
+Description=Claude Max API Proxy (localhost:3457)
+Documentation=https://github.com/ulmeanuadrian/openclaw-local-bridge
+After=network-online.target
+Wants=network-online.target
+Before=openclaw-gateway.service
+
+[Service]
+Type=simple
+ExecStart={{NODE_BIN}} {{PROXY_ENTRY}} 3457
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+TimeoutStartSec=15
+
+# Ensures requests are routed and identified identically to an interactive
+# Claude Code session per the user's active subscription.
+Environment=CLAUDE_CODE_ENTRYPOINT=cli
+Environment=HOME={{USER_HOME}}
+Environment=PATH={{PATH}}
+
+[Install]
+WantedBy=default.target

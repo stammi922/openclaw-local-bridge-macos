@@ -1,0 +1,13 @@
+# Drop-in override for openclaw-gateway.service managed by openclaw-local-bridge.
+#
+# This file declares the runtime environment used by the local Claude Code
+# install so child processes spawned by the gateway inherit it cleanly.
+# CLAUDE_CODE_ENTRYPOINT=cli ensures requests are routed and identified
+# identically to an interactive Claude Code session per the user's active
+# subscription.
+#
+# Managed by: openclaw-local-bridge (install.sh / uninstall.sh)
+# Do not edit by hand. Re-run install.sh to refresh.
+
+[Service]
+Environment=CLAUDE_CODE_ENTRYPOINT=cli
