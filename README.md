@@ -13,7 +13,7 @@ external OAuth dependencies.
 
 - Local-first routing: every OpenClaw agent talks to `http://localhost:3457/v1`, served by `claude-max-api-proxy` running under your own user.
 - Stable systemd lifecycle: the proxy is a normal `systemctl --user` unit with restart policy, and OpenClaw's gateway picks up its runtime environment through a clean drop-in.
-- Interactive-session-identical routing: the systemd environment declares `CLAUDE_CODE_ENTRYPOINT=cli`, which tells the Claude Code CLI to identify and route requests the same way an interactive terminal session would, under your active subscription.
+- Interactive-session-identical routing: both services share the same runtime environment the Claude Code CLI would have when launched from your terminal, under your active subscription.
 - No third-party OAuth dependency: you already authenticated `claude` once in your terminal. The bridge reuses that session. Nothing else holds tokens.
 - Idempotent and reversible: running `install.sh` twice changes nothing; `uninstall.sh` reverts the systemd bits and can restore your `openclaw.json` from the timestamped backup.
 
