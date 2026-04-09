@@ -1,5 +1,7 @@
 # openclaw-local-bridge
 
+> Companion tool for the Medium walkthrough: **[Running OpenClaw on Local Claude Code: What €43 of Debugging Taught Me](https://medium.com/@ulmeanuadrian/1f64de4d6852)**
+
 One-command setup for running your OpenClaw fleet fully against your local
 authenticated Claude Code install, with proper systemd lifecycle and no
 external OAuth dependencies.
