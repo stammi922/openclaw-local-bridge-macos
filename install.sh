@@ -132,6 +132,44 @@ else
     warn 'This installer uses the published claude-max-api-proxy package from npm. If you maintain a fork, reinstall it manually after this script completes.'
 fi
 
+# -------- patch claude-max-api-proxy openai-to-cli adapter ----------------
+# OpenClaw 4.15+ sends user content as array [{type:"text",text:"..."}].
+# The default proxy adapter does parts.push(msg.content) which JS converts to
+# "[object Object]" for arrays. Fix: extract .text from text-typed parts.
+
+PROXY_ROOT="$(dirname "$(dirname "$PROXY_ENTRY")")"
+ADAPTER_FILE="$PROXY_ROOT/dist/adapter/openai-to-cli.js"
+
+if [ -f "$ADAPTER_FILE" ]; then
+    if grep -q "function extractContent" "$ADAPTER_FILE"; then
+        ok "openai-to-cli adapter already patched (extractContent present)"
+    else
+        info "patching openai-to-cli.js (multimodal/array content extractor)"
+        cp -a "$ADAPTER_FILE" "${ADAPTER_FILE}.bak.$(date +%s)"
+        node -e '
+const fs = require("fs");
+const p = process.argv[1];
+let s = fs.readFileSync(p, "utf8");
+const helper = `function extractContent(c) {
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map(p => (p && p.type === "text" && typeof p.text === "string") ? p.text : "").filter(Boolean).join("\n");
+  return String(c == null ? "" : c);
+}
+`;
+if (!s.includes("function extractContent")) {
+  s = s.replace("export function messagesToPrompt(", helper + "export function messagesToPrompt(");
+}
+s = s.replace("`<system>\\n${msg.content}\\n</system>\\n`", "`<system>\\n${extractContent(msg.content)}\\n</system>\\n`");
+s = s.replace("parts.push(msg.content)", "parts.push(extractContent(msg.content))");
+s = s.replace("`<previous_response>\\n${msg.content}\\n</previous_response>\\n`", "`<previous_response>\\n${extractContent(msg.content)}\\n</previous_response>\\n`");
+fs.writeFileSync(p, s);
+' "$ADAPTER_FILE"
+        ok "openai-to-cli.js patched (extractContent helper added)"
+    fi
+else
+    warn "openai-to-cli.js not found at expected path; skipping array-content patch"
+fi
+
 # -------- backup openclaw.json -------------------------------------------
 
 info 'Backing up OpenClaw config'
