@@ -1,0 +1,8 @@
+{
+  "mode": "multi",
+  "accounts": [
+    { "label": "alpha", "configDir": "/tmp/openclaw-bridge-tests/alpha/config" },
+    { "label": "bravo", "configDir": "/tmp/openclaw-bridge-tests/bravo/config" },
+    { "label": "charlie", "configDir": "/tmp/openclaw-bridge-tests/charlie/config" }
+  ]
+}

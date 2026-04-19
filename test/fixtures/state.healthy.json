@@ -1,0 +1,8 @@
+{
+  "lastMainLabel": null,
+  "accounts": {
+    "alpha":   { "cooling_until": null, "last_outcome": "ok", "in_flight": 0, "last_used": "2026-04-19T10:00:00Z", "counters": { "ok": 5, "rate_limit": 0, "usage_limit": 0, "auth": 0, "other": 0 } },
+    "bravo":   { "cooling_until": null, "last_outcome": "ok", "in_flight": 0, "last_used": "2026-04-19T10:01:00Z", "counters": { "ok": 7, "rate_limit": 0, "usage_limit": 0, "auth": 0, "other": 0 } },
+    "charlie": { "cooling_until": null, "last_outcome": "ok", "in_flight": 0, "last_used": "2026-04-19T10:02:00Z", "counters": { "ok": 3, "rate_limit": 0, "usage_limit": 0, "auth": 0, "other": 0 } }
+  }
+}

@@ -40,7 +40,7 @@ echo
 # ---------------------------------------------------------------------------
 # 1) patch-adapter.mjs
 # ---------------------------------------------------------------------------
-echo "[1/4] patch-adapter.mjs"
+echo "[1/5] patch-adapter.mjs"
 cp "$FIXTURES/openai-to-cli.js" "$TMP/adapter.js"
 node "$REPO/scripts/patch-adapter.mjs" "$TMP/adapter.js" >/dev/null
 
@@ -69,7 +69,7 @@ echo
 # ---------------------------------------------------------------------------
 # 2) patch-openclaw-config.mjs
 # ---------------------------------------------------------------------------
-echo "[2/4] patch-openclaw-config.mjs"
+echo "[2/5] patch-openclaw-config.mjs"
 cp "$FIXTURES/openclaw.min.json" "$TMP/openclaw.json"
 node "$REPO/scripts/patch-openclaw-config.mjs" "$TMP/openclaw.json" 3456 >/dev/null
 
@@ -118,7 +118,7 @@ echo
 # ---------------------------------------------------------------------------
 # 3) patch-gateway-plist.mjs
 # ---------------------------------------------------------------------------
-echo "[3/4] patch-gateway-plist.mjs"
+echo "[3/5] patch-gateway-plist.mjs"
 cp "$FIXTURES/ai.openclaw.gateway.plist" "$TMP/gateway.plist"
 node "$REPO/scripts/patch-gateway-plist.mjs" "$TMP/gateway.plist" >/dev/null
 
@@ -146,7 +146,7 @@ echo
 # ---------------------------------------------------------------------------
 # 4) render-proxy-plist.mjs
 # ---------------------------------------------------------------------------
-echo "[4/4] render-proxy-plist.mjs"
+echo "[4/5] render-proxy-plist.mjs"
 node "$REPO/scripts/render-proxy-plist.mjs" \
   --template  "$REPO/templates/ai.claude-max-api-proxy.plist.tmpl" \
   --home      "/tmp/fakehome" \
@@ -184,6 +184,58 @@ if plutil -lint "$TMP/rendered-amp.plist" >/dev/null 2>&1; then
 else
   fail "proxy plist: ampersand in HOME broke rendered plist"
 fi
+echo
+
+# ---------------------------------------------------------------------------
+# 5) patch-proxy-rotator.mjs — idempotency + patched JS parses + single-mode no-op
+# ---------------------------------------------------------------------------
+echo "[5/5] patch-proxy-rotator.mjs"
+ROTPROXY="$TMP/rotator-proxy"
+cp -a "$REPO/vendor/claude-max-api-proxy" "$ROTPROXY"
+node "$REPO/scripts/patch-proxy-rotator.mjs" "$ROTPROXY" >/dev/null
+
+assert_contains "rotator: routes.js sentinel present"    "$ROTPROXY/dist/server/routes.js" "@openclaw-bridge:rotator v1"
+assert_contains "rotator: manager.js sentinel present"   "$ROTPROXY/dist/subprocess/manager.js" "@openclaw-bridge:rotator v1"
+assert_contains "rotator: manager.js env merge present"  "$ROTPROXY/dist/subprocess/manager.js" "...(this.envOverrides || {})"
+
+if [[ -f "$ROTPROXY/dist/rotator/index.js" ]]; then pass "rotator: module copied into dist/rotator/"; else fail "rotator: module not copied"; fi
+
+if node --check "$ROTPROXY/dist/server/routes.js" >/dev/null 2>&1; then
+  pass "rotator: patched routes.js parses"
+else
+  fail "rotator: patched routes.js failed node --check"
+fi
+if node --check "$ROTPROXY/dist/subprocess/manager.js" >/dev/null 2>&1; then
+  pass "rotator: patched manager.js parses"
+else
+  fail "rotator: patched manager.js failed node --check"
+fi
+
+# Idempotency
+before_r="$(shasum "$ROTPROXY/dist/server/routes.js" | awk '{print $1}')"
+before_m="$(shasum "$ROTPROXY/dist/subprocess/manager.js" | awk '{print $1}')"
+node "$REPO/scripts/patch-proxy-rotator.mjs" "$ROTPROXY" >/dev/null
+after_r="$(shasum "$ROTPROXY/dist/server/routes.js" | awk '{print $1}')"
+after_m="$(shasum "$ROTPROXY/dist/subprocess/manager.js" | awk '{print $1}')"
+assert_eq "rotator: routes.js idempotent" "$before_r" "$after_r"
+assert_eq "rotator: manager.js idempotent" "$before_m" "$after_m"
+
+# Single-mode no-op: prepare() must return empty env when accounts.json is
+# absent or mode=single, so the spawn env is identical to upstream.
+ROTTMP="$(mktemp -d -t openclaw-bridge-rot.XXXXXX)"
+OPENCLAW_BRIDGE_ACCOUNTS_DIR="$ROTTMP" \
+OPENCLAW_BRIDGE_ROTATOR_CONFIG="$ROTTMP/no-config.json" \
+OPENCLAW_BRIDGE_ROTATOR_LOG="$ROTTMP/rotator.log" \
+node --input-type=module -e "
+  import('$ROTPROXY/dist/rotator/index.js').then(async (m) => {
+    const ctx = await m.prepare({ model: 'claude-sonnet-4' });
+    if (ctx.kind !== 'single') { console.error('kind=' + ctx.kind); process.exit(1); }
+    if (Object.keys(ctx.env).length !== 0) { console.error('env not empty'); process.exit(1); }
+    if (ctx.label !== null) { console.error('label=' + ctx.label); process.exit(1); }
+  });
+" && pass "rotator: single-mode prepare() returns empty env (backward-compat)" || fail "rotator: single-mode prepare() did NOT no-op"
+rm -rf "$ROTTMP"
+
 echo
 
 # ---------------------------------------------------------------------------
