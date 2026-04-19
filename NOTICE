@@ -1,0 +1,34 @@
+openclaw-local-bridge-macos
+===========================
+
+This project is a macOS/launchd port of openclaw-local-bridge.
+
+It also bundles claude-max-api-proxy as a vendored dependency under
+vendor/claude-max-api-proxy/.
+
+Both upstream projects are MIT-licensed; their copyrights and license texts
+are reproduced below and inside vendor/claude-max-api-proxy/LICENSE.
+
+----------------------------------------------------------------------
+openclaw-local-bridge (Linux/systemd, semantic source for this port)
+https://github.com/ulmeanuadrian/openclaw-local-bridge
+
+Copyright (c) 2026 Adrian Ulmeanu — MIT License.
+
+This repository does not vendor any code from openclaw-local-bridge; the
+macOS implementation is an independent rewrite. Attribution preserved here
+because the architecture, patcher behavior, and adapter fix are all derived
+from that upstream work.
+
+----------------------------------------------------------------------
+claude-max-api-proxy (vendored under vendor/claude-max-api-proxy/)
+https://github.com/atalovesyou/claude-max-api-proxy
+
+Copyright (c) Atal Ashutosh — MIT License (see vendor/claude-max-api-proxy/LICENSE).
+
+The vendored copy is a verbatim snapshot of the published npm package at the
+pinned version recorded in vendor/claude-max-api-proxy/package.json. Its
+production node_modules/ are pre-installed for offline use; each transitive
+dependency retains its own LICENSE under node_modules/<pkg>/LICENSE.
+
+----------------------------------------------------------------------

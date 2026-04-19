@@ -1,0 +1,4 @@
+# The vendored proxy + its node_modules are upstream code — exclude from
+# GitHub language stats and diff-by-default behavior.
+vendor/** linguist-vendored=true
+vendor/** -diff

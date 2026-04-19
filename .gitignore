@@ -1,0 +1,19 @@
+# Backups created by the installer at runtime — never committed
+*.bak
+*.bak.*
+bridge-backups/
+
+# Local env files
+.env
+.env.*
+
+# Local logs
+*.log
+
+# macOS cruft
+.DS_Store
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
