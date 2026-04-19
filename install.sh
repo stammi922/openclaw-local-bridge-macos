@@ -28,6 +28,7 @@ DRY_RUN=0
 SKIP_VERIFY=0
 FORCE=0
 WITH_CLAUDE_PERMS="prompt"   # prompt | yes | no
+ENABLE_MULTI_ACCOUNT=0
 
 usage() {
   cat <<EOF
@@ -39,6 +40,9 @@ Flags:
   --non-interactive              No prompts; safe defaults
   --with-claude-permissions      Add Bash(*) + mcp__* allows non-interactively
   --no-claude-permissions        Skip the permissions step entirely
+  --enable-multi-account         Acknowledge the multi-account rotator risks
+                                 (installs CLI + rotator module either way;
+                                  this flag adds an up-front risk prompt)
   --skip-verify                  Don't run verify.sh after installing
   --force                        Continue past soft warnings
   --uninstall                    Delegate to ./uninstall.sh
@@ -56,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     --force)                    FORCE=1; shift ;;
     --with-claude-permissions)  WITH_CLAUDE_PERMS="yes"; shift ;;
     --no-claude-permissions)    WITH_CLAUDE_PERMS="no"; shift ;;
+    --enable-multi-account)     ENABLE_MULTI_ACCOUNT=1; shift ;;
     --uninstall)                exec "$REPO_ROOT/uninstall.sh" ;;
     -h|--help)                  usage; exit 0 ;;
     *) err "Unknown flag: $1"; usage; exit 2 ;;
@@ -66,7 +71,7 @@ done
 
 # ---------- Steps ----------------------------------------------------------
 
-TOTAL=11
+TOTAL=13
 
 step 1 $TOTAL "Preflight checks"
 require_macos
@@ -162,7 +167,85 @@ fi
 step 6 $TOTAL "Patch proxy adapter"
 node "$REPO_ROOT/scripts/patch-adapter.mjs" "$PROXY_HOME/dist/adapter/openai-to-cli.js" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 7 $TOTAL "Patch ~/.openclaw/openclaw.json"
+step 7 $TOTAL "Install rotator module into proxy"
+node "$REPO_ROOT/scripts/patch-proxy-rotator.mjs" "$PROXY_HOME" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
+
+step 8 $TOTAL "Install openclaw-bridge CLI + templates"
+BRIDGE_DIR="$HOME/.openclaw/bridge"
+CLI_DIR="$BRIDGE_DIR/cli"
+ACCOUNTS_DIR="$BRIDGE_DIR/accounts"
+if (( DRY_RUN )); then
+  dim "  would copy $REPO_ROOT/cli → $CLI_DIR"
+  dim "  would write template $ACCOUNTS_DIR/accounts.json (if absent)"
+  dim "  would write template $BRIDGE_DIR/rotator.config.json (if absent)"
+  dim "  would symlink $CLI_DIR/openclaw-bridge to ~/.local/bin/openclaw-bridge"
+else
+  mkdir -p "$CLI_DIR" "$CLI_DIR/commands" "$ACCOUNTS_DIR"
+  chmod 700 "$ACCOUNTS_DIR"
+  cp "$REPO_ROOT/cli/openclaw-bridge" "$CLI_DIR/openclaw-bridge"
+  chmod 755 "$CLI_DIR/openclaw-bridge"
+  cp "$REPO_ROOT/cli/commands/"*.mjs "$CLI_DIR/commands/"
+
+  if [[ ! -f "$ACCOUNTS_DIR/accounts.json" ]]; then
+    cp "$REPO_ROOT/templates/accounts.json.tmpl" "$ACCOUNTS_DIR/accounts.json"
+    chmod 600 "$ACCOUNTS_DIR/accounts.json"
+    info "  wrote $ACCOUNTS_DIR/accounts.json (mode: single)"
+  fi
+  if [[ ! -f "$BRIDGE_DIR/rotator.config.json" ]]; then
+    cp "$REPO_ROOT/templates/rotator.config.json.tmpl" "$BRIDGE_DIR/rotator.config.json"
+    chmod 600 "$BRIDGE_DIR/rotator.config.json"
+    info "  wrote $BRIDGE_DIR/rotator.config.json (defaults)"
+  fi
+
+  # Pick a bin directory we can write to.
+  CLI_BIN=""
+  for candidate in "$HOME/.local/bin" "/usr/local/bin"; do
+    if [[ -d "$candidate" ]] && [[ -w "$candidate" ]]; then
+      CLI_BIN="$candidate"; break
+    fi
+    if [[ ! -d "$candidate" ]] && mkdir -p "$candidate" 2>/dev/null && [[ -w "$candidate" ]]; then
+      CLI_BIN="$candidate"; break
+    fi
+  done
+  if [[ -n "$CLI_BIN" ]]; then
+    ln -sf "$CLI_DIR/openclaw-bridge" "$CLI_BIN/openclaw-bridge"
+    ok "Installed openclaw-bridge → $CLI_BIN/openclaw-bridge"
+    case ":$PATH:" in
+      *":$CLI_BIN:"*) ;;
+      *) warn "  $CLI_BIN is not on your PATH. Add this to ~/.zshrc: export PATH=\"$CLI_BIN:\$PATH\"" ;;
+    esac
+  else
+    warn "  Could not find a writable bin dir. Run the CLI directly: $CLI_DIR/openclaw-bridge"
+  fi
+
+  if (( ENABLE_MULTI_ACCOUNT )); then
+    cat <<'MULTI_WARNING'
+
+   MULTI-ACCOUNT ROTATION MODE (--enable-multi-account)
+   You have asked to acknowledge the multi-account rotator up front.
+   This feature rotates calls across several Claude Max accounts to
+   avoid rate/usage limits. Anthropic may treat this as abuse of the
+   Services and terminate ALL linked accounts simultaneously, not just
+   one. You are solely responsible for this choice.
+
+   Enabling multi mode is still a separate step: add accounts with
+     openclaw-bridge accounts add <label>
+   and then
+     openclaw-bridge mode set multi
+MULTI_WARNING
+    if (( ! NON_INTERACTIVE )); then
+      read -r -p "   Type 'I accept the risk' to acknowledge: " ack
+      if [[ "$ack" != "I accept the risk" ]]; then
+        die "   aborted — exact phrase not entered."
+      fi
+      ok "Multi-account rotator infrastructure installed (mode remains 'single' until you opt in)."
+    else
+      info "Non-interactive — recorded acknowledgement flag but not acting on it."
+    fi
+  fi
+fi
+
+step 9 $TOTAL "Patch ~/.openclaw/openclaw.json"
 node "$REPO_ROOT/scripts/patch-openclaw-config.mjs" "$HOME/.openclaw/openclaw.json" "$PORT" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 if (( ! DRY_RUN )); then
   if openclaw config validate >/dev/null 2>&1; then
@@ -174,10 +257,10 @@ if (( ! DRY_RUN )); then
   fi
 fi
 
-step 8 $TOTAL "Patch gateway plist (if present)"
+step 10 $TOTAL "Patch gateway plist (if present)"
 node "$REPO_ROOT/scripts/patch-gateway-plist.mjs" "$GATEWAY_PLIST" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 9 $TOTAL "Render proxy plist & (re)load launchd services"
+step 11 $TOTAL "Render proxy plist & (re)load launchd services"
 if (( DRY_RUN )); then
   dim "  would write: $PROXY_PLIST"
   dim "  would: launchctl bootout/bootstrap proxy (and gateway if present)"
@@ -206,7 +289,7 @@ else
   fi
 fi
 
-step 10 $TOTAL "Claude Code permissions"
+step 12 $TOTAL "Claude Code permissions"
 add_claude_perms() {
   if (( DRY_RUN )); then
     node "$REPO_ROOT/scripts/patch-claude-settings.mjs" --dry-run
@@ -259,7 +342,7 @@ EOF
     ;;
 esac
 
-step 11 $TOTAL "Verify"
+step 13 $TOTAL "Verify"
 if (( SKIP_VERIFY || DRY_RUN )); then
   info "Skipping verify ($([[ $DRY_RUN -eq 1 ]] && echo dry-run || echo --skip-verify))."
 else
