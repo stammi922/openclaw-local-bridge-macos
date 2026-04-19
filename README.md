@@ -299,17 +299,6 @@ Abrechnungsfolgen, für Datenverlust, entgangenen Gewinn, mittelbare
 Schäden oder Folgeschäden — ist **im gesetzlich zulässigen Umfang
 ausgeschlossen**.
 
-Dieser Haftungsausschluss **gilt nicht** für:
-
-- Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit,
-  die auf einer fahrlässigen Pflichtverletzung des Autors oder auf einer
-  vorsätzlichen oder fahrlässigen Pflichtverletzung eines gesetzlichen
-  Vertreters oder Erfüllungsgehilfen beruhen;
-- sonstige Schäden, die auf **Vorsatz oder grober Fahrlässigkeit** des
-  Autors oder eines gesetzlichen Vertreters oder Erfüllungsgehilfen
-  beruhen;
-- zwingende Haftungstatbestände nach dem Produkthaftungsgesetz.
-
 Die Einhaltung der Nutzungsbedingungen der jeweiligen Drittanbieter,
 insbesondere der Terms of Service und der Usage Policy von Anthropic,
 obliegt **ausschließlich dem Nutzer**. Die Nutzung dieser Software
