@@ -73,6 +73,45 @@ fi
 check "openclaw config validate" \
   bash -c "openclaw config validate >/dev/null"
 
+# 6) rotator module installed into proxy
+PROXY_HOME="$HOME/.openclaw/bridge/claude-max-api-proxy"
+check "rotator: module installed in proxy" \
+  bash -c "[[ -f '$PROXY_HOME/dist/rotator/index.js' ]]"
+check "rotator: routes.js patched with sentinel" \
+  bash -c "grep -q '@openclaw-bridge:rotator v1' '$PROXY_HOME/dist/server/routes.js'"
+check "rotator: manager.js patched with sentinel" \
+  bash -c "grep -q '@openclaw-bridge:rotator v1' '$PROXY_HOME/dist/subprocess/manager.js'"
+
+# 7) accounts registry present and parseable
+ACCOUNTS_JSON="$HOME/.openclaw/bridge/accounts/accounts.json"
+check "rotator: accounts.json parses" \
+  bash -c "[[ -f '$ACCOUNTS_JSON' ]] && node -e 'JSON.parse(require(\"fs\").readFileSync(\"$ACCOUNTS_JSON\",\"utf8\"))'"
+
+# 8) if multi mode, every registered account has a populated config dir
+if [[ -f "$ACCOUNTS_JSON" ]]; then
+  MODE="$(node -e 'try { console.log(JSON.parse(require("fs").readFileSync("'"$ACCOUNTS_JSON"'","utf8")).mode || "single") } catch { console.log("single") }')"
+  if [[ "$MODE" == "multi" ]]; then
+    if node -e '
+        const fs = require("fs");
+        const path = require("path");
+        const reg = JSON.parse(fs.readFileSync("'"$ACCOUNTS_JSON"'","utf8"));
+        const missing = [];
+        for (const a of reg.accounts || []) {
+          if (!fs.existsSync(a.configDir)) missing.push(a.label + " (" + a.configDir + ")");
+        }
+        if (missing.length) { console.error("missing config dirs: " + missing.join(", ")); process.exit(1); }
+        if ((reg.accounts || []).length === 0) { console.error("multi mode with zero accounts"); process.exit(1); }
+      ' 2>/dev/null; then
+      RESULTS+=("PASS  rotator: multi mode accounts all have config dirs")
+    else
+      RESULTS+=("FAIL  rotator: multi mode but one or more accounts missing config dirs")
+      FAILS=$((FAILS + 1))
+    fi
+  else
+    RESULTS+=("SKIP  rotator: single mode (multi-account checks not applicable)")
+  fi
+fi
+
 # 6) optional smoke
 if (( SMOKE )); then
   if openclaw agent 'say hi in five words' --agent claude-code 2>/dev/null | grep -qiE 'hi|hello'; then
