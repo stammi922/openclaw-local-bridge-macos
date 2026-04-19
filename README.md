@@ -12,6 +12,36 @@ under `vendor/` so install works without touching the npm registry.
 
 ---
 
+> ### ⚠️ Use at your own risk
+>
+> This project is an **unofficial, user-community integration**. It is not
+> affiliated with, endorsed by, or sponsored by Anthropic, OpenClaw, or any
+> upstream project it depends on.
+>
+> Automating prompts into your `claude` CLI / Claude Max subscription **may
+> conflict with Anthropic's Terms of Service or Usage Policies** depending
+> on how you use it. Rate-limiting, account suspension, or permanent
+> termination of your Anthropic (or any other) account is a real possible
+> outcome. You alone are responsible for reviewing those terms before
+> installing this bridge.
+>
+> The installer also offers to add broad Claude Code tool-execution
+> permissions (`Bash(*)`, `mcp__*`) to `~/.claude/settings.json`. Accepting
+> this grants any agent running through the bridge permission to execute
+> arbitrary shell commands and MCP tool calls on your machine without
+> further prompts. **Decline if you are not sure.**
+>
+> The author provides this software free of charge, with no warranty of
+> any kind, and accepts no liability for account bans, lockouts, data loss,
+> billing surprises, or any other consequence of running it. See
+> [Legal notice / Haftungsausschluss](#legal-notice--haftungsausschluss)
+> for the full terms.
+>
+> **By running `install.sh` you confirm that you have read and accepted
+> these terms.**
+
+---
+
 ## What this does
 
 When you run `./install.sh`:
@@ -171,6 +201,119 @@ npm package, with its production `node_modules/` pre-installed. See
 This repo is a clean macOS rewrite. See [`NOTICE`](./NOTICE) for full
 attribution.
 
+---
+
 ## License
 
 MIT. See [`LICENSE`](./LICENSE).
+
+---
+
+## Legal notice / Haftungsausschluss
+
+### No affiliation, no endorsement
+
+This project is an independent, user-community tool published free of charge
+under the MIT license. It is **not** affiliated with, endorsed by, sponsored
+by, or certified by:
+
+- **Anthropic PBC** (maker of Claude and Claude Code)
+- **OpenClaw** / **clawdbot**
+- any upstream project listed in `NOTICE` or `vendor/`
+
+"Claude", "Claude Code", "Claude Max", "Anthropic", "OpenClaw", and related
+marks are the property of their respective owners. All references are
+nominative (descriptive use only).
+
+### Third-party Terms of Service are your responsibility
+
+Your use of the `claude` CLI and your Claude Max subscription is governed
+by **Anthropic's own agreements**, including but not limited to the
+[Consumer Terms of Service](https://www.anthropic.com/legal/consumer-terms),
+the [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms),
+the [Usage Policy](https://www.anthropic.com/legal/aup), and any
+subscription-specific terms attached to Claude Max.
+
+This bridge automates programmatic prompts into that CLI. Such usage **may
+or may not be permitted** under your agreement with Anthropic, depending
+on volume, automation, resale, fair-use assessment, and future policy
+changes. **It is solely your responsibility** to review those terms and
+confirm that your intended use complies — before installing, and on an
+ongoing basis while you run this software. The same applies to OpenClaw's
+and any other third party's terms.
+
+### Possible consequences you accept by installing
+
+Possible outcomes of running this software include, without limitation:
+
+- rate-limiting, temporary suspension, or **permanent termination** of
+  your Anthropic, OpenClaw, GitHub, or other third-party accounts
+- loss of access to paid subscriptions you previously held, with or
+  without refund
+- unexpected API or subscription charges
+- loss, corruption, or unintended disclosure of local data (especially if
+  you accept the `Bash(*)` / `mcp__*` Claude Code permissions the
+  installer offers — these grant blanket shell- and tool-execution rights
+  to any agent running through the bridge)
+- malfunction, downtime, or security issues inherited from upstream
+  dependencies
+
+By running `install.sh` you acknowledge and accept all such risks.
+
+### No warranty
+
+THE SOFTWARE IS PROVIDED **"AS IS"**, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
+UNINTERRUPTED OR ERROR-FREE OPERATION. See [`LICENSE`](./LICENSE).
+
+### Limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY — including, without limitation, suspension, termination,
+rate-limiting, or ban of any Anthropic, OpenClaw, GitHub, or other
+third-party account; loss of data; loss of productivity; financial loss
+from usage overage or subscription changes; reputational harm; or any
+direct, indirect, incidental, special, consequential, or exemplary
+damages — whether arising in contract, tort (including negligence), or
+otherwise, arising from, out of, or in connection with the software or
+the use of or inability to use the software.
+
+### Haftungsausschluss (Deutschland / EU)
+
+Diese Software wird als kostenloses Open-Source-Projekt unter der
+MIT-Lizenz **unentgeltlich** zur Verfügung gestellt. Es handelt sich um
+ein privates Community-Projekt; es besteht keinerlei Geschäftsbeziehung
+oder Vertragsverhältnis zwischen dem Autor und den Nutzern der Software.
+
+Eine **Gewährleistung** wird — soweit gesetzlich zulässig — nicht
+übernommen. Die Software wird „wie besehen" („as is") bereitgestellt.
+
+Eine **Haftung** des Autors für Schäden, die durch die Nutzung oder die
+Unmöglichkeit der Nutzung dieser Software entstehen — insbesondere für
+Sperrungen, Kündigungen, Drosselungen oder sonstige Maßnahmen seitens
+Anthropic, OpenClaw, GitHub oder anderer Drittanbieter, für entgangene
+Nutzung bezahlter Abonnements, für unerwartete Nutzungs- oder
+Abrechnungsfolgen, für Datenverlust, entgangenen Gewinn, mittelbare
+Schäden oder Folgeschäden — ist **im gesetzlich zulässigen Umfang
+ausgeschlossen**.
+
+Dieser Haftungsausschluss **gilt nicht** für:
+
+- Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit,
+  die auf einer fahrlässigen Pflichtverletzung des Autors oder auf einer
+  vorsätzlichen oder fahrlässigen Pflichtverletzung eines gesetzlichen
+  Vertreters oder Erfüllungsgehilfen beruhen;
+- sonstige Schäden, die auf **Vorsatz oder grober Fahrlässigkeit** des
+  Autors oder eines gesetzlichen Vertreters oder Erfüllungsgehilfen
+  beruhen;
+- zwingende Haftungstatbestände nach dem Produkthaftungsgesetz.
+
+Die Einhaltung der Nutzungsbedingungen der jeweiligen Drittanbieter,
+insbesondere der Terms of Service und der Usage Policy von Anthropic,
+obliegt **ausschließlich dem Nutzer**. Die Nutzung dieser Software
+erfolgt auf **eigenes Risiko** und in eigener Verantwortung.
+
+Mit der Ausführung von `install.sh` bestätigt der Nutzer, diese Hinweise
+gelesen, verstanden und akzeptiert zu haben.
