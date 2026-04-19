@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# openclaw-bridge — operator CLI for the multi-account rotator.
+#
+# Locations:
+#   Accounts registry/state: $HOME/.openclaw/bridge/accounts/{accounts,state}.json
+#   Per-account CLAUDE_CONFIG_DIR: $HOME/.openclaw/bridge/accounts/<label>/config/
+#   Rotator config (optional): $HOME/.openclaw/bridge/rotator.config.json
+#   Rotator log: $HOME/.openclaw/logs/rotator.log
+set -euo pipefail
+
+# Resolve the command scripts relative to this shim. The shim is installed
+# as a symlink under ~/.local/bin (or /usr/local/bin), so follow symlinks.
+SELF="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$0")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+CMD_DIR="$ROOT/cli/commands"
+
+usage() {
+  cat <<EOF
+Usage: openclaw-bridge <command> [args]
+
+Commands:
+  mode                    Show current rotator mode (single|multi)
+  mode set <mode>         Switch to "single" or "multi"
+  accounts list           Show registered accounts and health
+  accounts add <label>    Add an account (runs claude login in an isolated CLAUDE_CONFIG_DIR)
+  accounts rm <label>     Remove an account from the registry
+  accounts test <label>   Round-trip a tiny request through a specific account
+  status                  Summary: mode, accounts, in-flight, last N decisions
+  rotate-now              Clear lastMainLabel so the next main request re-picks
+  reload                  Reload the proxy launchd service
+  tail                    Tail ~/.openclaw/logs/rotator.log (pretty-printed)
+
+Env overrides (tests):
+  OPENCLAW_BRIDGE_ACCOUNTS_DIR
+  OPENCLAW_BRIDGE_ROTATOR_CONFIG
+  OPENCLAW_BRIDGE_ROTATOR_LOG
+EOF
+}
+
+if [[ $# -eq 0 ]]; then usage; exit 2; fi
+
+cmd="$1"; shift || true
+case "$cmd" in
+  -h|--help|help)   usage; exit 0 ;;
+  mode)             exec node "$CMD_DIR/mode.mjs" "$@" ;;
+  accounts)         exec node "$CMD_DIR/accounts.mjs" "$@" ;;
+  status)           exec node "$CMD_DIR/status.mjs" "$@" ;;
+  rotate-now)       exec node "$CMD_DIR/rotate-now.mjs" "$@" ;;
+  reload)           exec node "$CMD_DIR/reload.mjs" "$@" ;;
+  tail)             exec node "$CMD_DIR/tail.mjs" "$@" ;;
+  *) echo "unknown command: $cmd" >&2; usage; exit 2 ;;
+esac
