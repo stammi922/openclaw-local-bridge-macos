@@ -10,6 +10,12 @@ bridge-backups/
 # Local logs
 *.log
 
+# Defensive: never commit user accounts state or rotator config, even though
+# they normally live outside the repo under ~/.openclaw/bridge/.
+bridge/accounts/
+/rotator.config.json
+/accounts.json
+
 # macOS cruft
 .DS_Store
 

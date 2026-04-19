@@ -115,6 +115,9 @@ clones itself to a temp dir before doing anything destructive.)
 --non-interactive              No prompts; safe defaults
 --with-claude-permissions      Add Bash(*) + mcp__* allows non-interactively
 --no-claude-permissions        Skip the permissions step entirely
+--enable-multi-account         Acknowledge the multi-account rotator's risks
+                               (installs CLI + rotator module either way;
+                                this flag adds an up-front risk prompt)
 --skip-verify                  Don't run verify.sh after installing
 --force                        Continue past soft warnings
 --uninstall                    Delegate to ./uninstall.sh
@@ -156,6 +159,49 @@ to your local `claude` CLI in `--print` mode. OpenClaw is configured with an
 runs an agent turn, it talks OpenAI; the proxy translates and shells out to
 Claude Code; Claude Code answers using your Max subscription; the response
 flows back. Everything runs on `localhost`. No tokens leave your machine.
+
+---
+
+## Multi-account mode (optional, higher-risk)
+
+If you own multiple Claude Max subscriptions and want to pool them across
+heavy or parallel workloads, the bridge ships an **optional** rotator that:
+
+- picks a healthy account per request (sticky for main traffic, uniform-random
+  for heartbeats) to avoid single-account rate and usage limits;
+- cloaks the OpenClaw heartbeat cadence across all accounts in the pool;
+- marks accounts as cooling on `rate_limit` / `usage_limit` / `auth`
+  outcomes and fails over automatically.
+
+**Single-account use is unchanged.** The rotator is inert (a single
+`fs.existsSync` check per request) unless you explicitly enable
+`mode: "multi"` via the CLI.
+
+Quickstart:
+
+```bash
+./install.sh --enable-multi-account          # optional — adds up-front risk notice
+
+openclaw-bridge accounts add account1        # runs `claude login` into an isolated config dir
+openclaw-bridge accounts add account2
+openclaw-bridge accounts test account1       # smoke test
+openclaw-bridge mode set multi               # requires "I accept the risk" prompt
+openclaw-bridge status                       # see the pool + health + last decisions
+```
+
+Full details, risk summary, operations, and configuration are in
+[`docs/MULTI_ACCOUNT.md`](./docs/MULTI_ACCOUNT.md). Read that before
+registering accounts.
+
+> ### ⚠️ Multi-account rotation is materially higher risk
+>
+> Rotating traffic across several Claude Max accounts — especially to
+> sidestep rate or usage limits — is **more likely to be treated by Anthropic
+> as abuse of the Services** than single-account automation. Detection may
+> result in the **simultaneous termination of every account you rotate
+> through**, not just one. Enabling this mode is an explicit choice you make
+> with full knowledge of that risk. See
+> [Legal notice / Haftungsausschluss](#legal-notice--haftungsausschluss).
 
 ---
 
@@ -260,6 +306,19 @@ Possible outcomes of running this software include, without limitation:
 
 By running `install.sh` you acknowledge and accept all such risks.
 
+### Multi-account rotation carries additional risk
+
+The optional multi-account rotator (see
+[`docs/MULTI_ACCOUNT.md`](./docs/MULTI_ACCOUNT.md)) circulates traffic across
+several Claude Max accounts to sidestep rate and usage limits. This is a
+**materially stronger** signal of automation-for-abuse than single-account
+use, and **Anthropic may respond by terminating every account you rotate
+through simultaneously, not just one**. Enabling this feature — by running
+`openclaw-bridge mode set multi` or by accepting the `--enable-multi-account`
+installer prompt — is an **explicit, informed choice** you make with full
+knowledge of that escalated risk. The same no-warranty / no-liability terms
+above apply, and you accept them doubly for this mode.
+
 ### No warranty
 
 THE SOFTWARE IS PROVIDED **"AS IS"**, WITHOUT WARRANTY OF ANY KIND,
@@ -317,3 +376,15 @@ erfolgt auf **eigenes Risiko** und in eigener Verantwortung.
 
 Mit der Ausführung von `install.sh` bestätigt der Nutzer, diese Hinweise
 gelesen, verstanden und akzeptiert zu haben.
+
+**Besonderer Hinweis zum Multi-Account-Betrieb:** Der optionale Rotator
+(siehe [`docs/MULTI_ACCOUNT.md`](./docs/MULTI_ACCOUNT.md)) verteilt Anfragen
+auf mehrere Claude-Max-Konten, um Raten- und Nutzungslimits zu umgehen. Dies
+ist ein **erheblich stärkeres Abuse-Signal** als Einzelkonto-Automation.
+Anthropic kann darauf mit der **gleichzeitigen Sperrung sämtlicher
+Konten**, die der Nutzer in den Rotator aufnimmt, reagieren — nicht nur
+eines einzelnen. Die Aktivierung dieses Modus (über
+`openclaw-bridge mode set multi` bzw. `--enable-multi-account`) ist eine
+**bewusste, eigenverantwortliche Entscheidung des Nutzers** in voller
+Kenntnis dieses erhöhten Risikos. Die vorstehenden Gewährleistungs- und
+Haftungsausschlüsse gelten für diesen Modus **in vollem Umfang**.
