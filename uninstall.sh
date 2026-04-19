@@ -14,17 +14,20 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 NON_INTERACTIVE=0
 RESTORE="prompt"   # prompt | latest | none
+PURGE_ACCOUNTS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=1; shift ;;
     --restore-latest)  RESTORE="latest"; shift ;;
     --no-restore)      RESTORE="none"; shift ;;
+    --purge-accounts)  PURGE_ACCOUNTS=1; shift ;;
     -h|--help)
       cat <<EOF
 Usage: uninstall.sh [flags]
   --non-interactive    No prompts; combine with --restore-latest or --no-restore
   --restore-latest     Restore the most recent backup without asking
   --no-restore         Don't restore anything — only stop & remove the bridge
+  --purge-accounts     Also delete ~/.openclaw/bridge/accounts/ (credentials!)
 EOF
       exit 0 ;;
     *) die "Unknown flag: $1" ;;
@@ -50,6 +53,34 @@ if [[ -d "$PROXY_HOME" ]]; then
   rm -rf "$PROXY_HOME"
   ok "Removed $PROXY_HOME"
 fi
+
+# Remove the openclaw-bridge CLI shim (copy under ~/.openclaw/bridge/cli/ and
+# the symlink in ~/.local/bin or /usr/local/bin, whichever we installed into).
+if [[ -d "$HOME/.openclaw/bridge/cli" ]]; then
+  rm -rf "$HOME/.openclaw/bridge/cli"
+  ok "Removed openclaw-bridge CLI scripts"
+fi
+for bindir in "$HOME/.local/bin" "/usr/local/bin"; do
+  link="$bindir/openclaw-bridge"
+  if [[ -L "$link" ]] || [[ -f "$link" ]]; then
+    rm -f "$link" && ok "Removed $link"
+  fi
+done
+if [[ -f "$HOME/.openclaw/bridge/rotator.config.json" ]]; then
+  rm -f "$HOME/.openclaw/bridge/rotator.config.json"
+  ok "Removed rotator.config.json"
+fi
+
+# Accounts directory holds real OAuth tokens — keep by default.
+if [[ -d "$HOME/.openclaw/bridge/accounts" ]]; then
+  if (( PURGE_ACCOUNTS )); then
+    rm -rf "$HOME/.openclaw/bridge/accounts"
+    warn "Purged $HOME/.openclaw/bridge/accounts (credentials deleted)."
+  else
+    info "Kept $HOME/.openclaw/bridge/accounts/ (holds Claude OAuth credentials). Pass --purge-accounts to wipe it."
+  fi
+fi
+
 # Remove the bridge dir if it's now empty.
 [[ -d "$HOME/.openclaw/bridge" ]] && rmdir "$HOME/.openclaw/bridge" 2>/dev/null || true
 
