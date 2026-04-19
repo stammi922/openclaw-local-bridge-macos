@@ -99,7 +99,7 @@ is a thin bootstrap that shallow-clones the tagged release and runs
 `install.sh` from the clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/stammi922/openclaw-local-bridge-macos/v1.0.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/stammi922/openclaw-local-bridge-macos/v1.0.1/install.sh | bash
 ```
 
 (The script auto-detects when it's being executed via `curl | bash` and
