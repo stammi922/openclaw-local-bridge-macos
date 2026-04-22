@@ -11,6 +11,7 @@ import { sessionsYieldTool } from "./tools/sessions-yield.js";
 import { memorySearchTool } from "./tools/memory-search.js";
 import { lcmGrepTool } from "./tools/lcm-grep.js";
 import { cronListTool } from "./tools/cron-list.js";
+import { agentsListTool } from "./tools/agents-list.js";
 
 async function main() {
   const config = loadConfig();
@@ -32,6 +33,7 @@ async function main() {
     [memorySearchTool.definition.name]: memorySearchTool,
     [lcmGrepTool.definition.name]: lcmGrepTool,
     [cronListTool.definition.name]: cronListTool,
+    [agentsListTool.definition.name]: agentsListTool,
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
