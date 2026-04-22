@@ -14,23 +14,38 @@ LCM_DB="${HOME}/.openclaw/lcm.db"
 command -v openclaw >/dev/null || { echo "[e2e] openclaw not on PATH"; exit 1; }
 command -v sqlite3 >/dev/null || { echo "[e2e] sqlite3 not on PATH"; exit 1; }
 
-before_count="$(sqlite3 "$LCM_DB" "SELECT COUNT(*) FROM messages WHERE session_key LIKE 'agent:main:subagent:%';")"
+before_count="$(sqlite3 "$LCM_DB" "SELECT COUNT(*) FROM messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE c.session_key LIKE 'agent:main:subagent:%';")"
 echo "[e2e] subagent messages before: ${before_count}"
 
 SID="$(uuidgen | tr 'A-Z' 'a-z')"
 echo "[e2e] main session id: ${SID}"
 
-if ! timeout 90 openclaw agent \
+# macOS doesn't ship GNU `timeout`/`gtimeout`. Roll our own from bash
+# primitives so this test runs on a stock install without coreutils.
+run_with_timeout() {
+  local secs="$1"; shift
+  "$@" >/tmp/e2e-main.out 2>/tmp/e2e-main.err &
+  local child=$!
+  ( sleep "$secs" && kill -TERM "$child" 2>/dev/null ) &
+  local watcher=$!
+  local rc=0
+  wait "$child" 2>/dev/null || rc=$?
+  kill -TERM "$watcher" 2>/dev/null || true
+  wait "$watcher" 2>/dev/null || true
+  return $rc
+}
+
+if ! run_with_timeout 90 openclaw agent \
     --agent main \
     --session-id "$SID" \
     --message "Use the sessions_spawn tool to spawn a subagent whose only job is to reply with the single word SUB-PONG. Wait for its reply. Then respond with exactly what the subagent said, nothing else." \
-    --json >/tmp/e2e-main.out 2>/tmp/e2e-main.err; then
+    --json; then
   echo "[e2e] FAIL: main invocation failed. stderr tail:"
   tail -n 40 /tmp/e2e-main.err
   exit 1
 fi
 
-after_count="$(sqlite3 "$LCM_DB" "SELECT COUNT(*) FROM messages WHERE session_key LIKE 'agent:main:subagent:%';")"
+after_count="$(sqlite3 "$LCM_DB" "SELECT COUNT(*) FROM messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE c.session_key LIKE 'agent:main:subagent:%';")"
 echo "[e2e] subagent messages after: ${after_count}"
 
 if (( after_count <= before_count )); then
@@ -39,14 +54,14 @@ if (( after_count <= before_count )); then
 fi
 
 pong_hit="$(sqlite3 "$LCM_DB" \
-  "SELECT COUNT(*) FROM messages WHERE session_key LIKE 'agent:main:subagent:%' AND content LIKE '%SUB-PONG%';")"
+  "SELECT COUNT(*) FROM messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE c.session_key LIKE 'agent:main:subagent:%' AND content LIKE '%SUB-PONG%';")"
 if (( pong_hit < 1 )); then
   echo "[e2e] FAIL: SUB-PONG never appeared in a subagent's content"
   exit 1
 fi
 
 main_echoed="$(sqlite3 "$LCM_DB" \
-  "SELECT COUNT(*) FROM messages WHERE session_key = 'agent:main:main' AND content LIKE '%SUB-PONG%' AND created_at > datetime('now', '-2 minutes');")"
+  "SELECT COUNT(*) FROM messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE c.session_key = 'agent:main:main' AND m.content LIKE '%SUB-PONG%' AND m.created_at > datetime('now', '-2 minutes');")"
 if (( main_echoed < 1 )); then
   echo "[e2e] FAIL: main never echoed SUB-PONG within the last 2 minutes"
   exit 1
