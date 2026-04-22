@@ -8,6 +8,7 @@ import { sessionStatusTool } from "./tools/session-status.js";
 import { sessionsListTool } from "./tools/sessions-list.js";
 import { sessionsSendTool } from "./tools/sessions-send.js";
 import { sessionsYieldTool } from "./tools/sessions-yield.js";
+import { memorySearchTool } from "./tools/memory-search.js";
 
 async function main() {
   const config = loadConfig();
@@ -26,6 +27,7 @@ async function main() {
     [sessionsListTool.definition.name]: sessionsListTool,
     [sessionsSendTool.definition.name]: sessionsSendTool,
     [sessionsYieldTool.definition.name]: sessionsYieldTool,
+    [memorySearchTool.definition.name]: memorySearchTool,
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
