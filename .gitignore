@@ -17,3 +17,10 @@ bridge-backups/
 .idea/
 .vscode/
 *.swp
+
+# Node / TypeScript
+node_modules/
+coverage/
+.vitest-temp/
+dist/
+!proxy/dist/
