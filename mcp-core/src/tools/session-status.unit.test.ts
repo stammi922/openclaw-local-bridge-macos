@@ -36,4 +36,22 @@ describe("sessionStatusTool", () => {
     if ("error" in result) throw new Error("expected a row, got error");
     expect(result.last_message_preview).toBe("x".repeat(200));
   });
+
+  it("falls back to NOT_FOUND when CLI returns a non-array payload", async () => {
+    // Guard against CLI drift: if `sessions list --json` ever returns an object envelope
+    // or null, we should not throw — we treat it as "no match" and surface NOT_FOUND.
+    vi.mocked(cli.runOpenclawJson).mockResolvedValue({ unexpected: "shape" } as never);
+    const result = await sessionStatusTool.handler({ session_id: "abc" });
+    if (!("error" in result)) throw new Error("expected error shape");
+    expect(result.code).toBe("NOT_FOUND");
+  });
+
+  it("omits last_message_preview when last_message is empty", async () => {
+    vi.mocked(cli.runOpenclawJson).mockResolvedValue([
+      { session_id: "abc", status: "running", last_message: "" },
+    ]);
+    const result = await sessionStatusTool.handler({ session_id: "abc" });
+    if ("error" in result) throw new Error("expected a row, got error");
+    expect(result.last_message_preview).toBeUndefined();
+  });
 });

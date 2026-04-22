@@ -43,6 +43,7 @@ export const sessionStatusTool = {
     const row = (Array.isArray(list) ? list : []).find(s => s.session_id === session_id);
     if (!row) return { error: `session ${session_id} not found`, code: "NOT_FOUND" };
     const preview = row.last_message ? row.last_message.slice(0, 200) : undefined;
+    // Field-name drift: CLI `last_message` → here `last_message_preview`; sessions_spawn returns `result`. Reconcile in Task 16.
     return {
       session_id: row.session_id,
       status: row.status,
