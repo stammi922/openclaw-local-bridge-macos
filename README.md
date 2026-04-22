@@ -159,6 +159,34 @@ flows back. Everything runs on `localhost`. No tokens leave your machine.
 
 ---
 
+## MCP bridge tools
+
+The installer's step 12 also builds and links two MCP-related binaries from
+this repo's workspaces:
+
+| Binary | From | Purpose |
+|---|---|---|
+| `openclaw-core-mcp` | `mcp-core/` | stdio MCP server exposing 9 openclaw tools (`sessions_spawn`, `sessions_list`, `sessions_send`, `session_status`, `sessions_yield`, `memory_search`, `lcm_grep`, `cron_list`, `agents_list`) for direct use by MCP clients |
+| `openclaw-watch` | `watch-cli/` | live terminal viewer that tails `openclaw logs --follow --json` and prints per-session events |
+
+The installer renders `~/.openclaw/mcp-config.json` from
+`proxy/mcp-config.json.template`. Point any MCP-capable client at it to get
+both the stock `openclaw` channel bridge (`openclaw mcp serve`) and the
+custom `openclaw-core` tool surface in one config.
+
+```bash
+# live tail of subagent activity, in a second terminal
+openclaw-watch
+
+# or machine-readable NDJSON for piping into jq / your own tooling
+openclaw-watch --json | jq .
+```
+
+`uninstall.sh` step 5 symmetrically `npm unlink`s both binaries and removes
+the rendered `mcp-config.json` (unless it was just restored from a backup).
+
+---
+
 ## Troubleshooting
 
 **`EACCES` during install** — npm is trying to write to a global directory
