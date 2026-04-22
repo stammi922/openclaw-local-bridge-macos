@@ -74,10 +74,8 @@ export const lcmGrepTool = {
     } catch (cliErr) {
       const msg = cliErr instanceof Error ? cliErr.message : String(cliErr);
       process.stderr.write(`[lcm_grep] CLI failed (${msg.slice(0, 80)}); falling back to sqlite\n`);
-      // Deliberately avoid loadConfig() here: it requires a gateway token, and
-      // the fallback exists precisely to cover cases where the CLI is unhealthy
-      // (which is often when the token is absent). resolveLcmDbPath needs only
-      // the state dir.
+      // The fallback reads sqlite directly; resolveLcmDbPath needs only the
+      // state dir so we avoid loadConfig's extra file I/O on the hot path.
       return viaSqlite(pattern, limit, resolveLcmDbPath());
     }
   },

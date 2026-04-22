@@ -4,7 +4,13 @@ import { join } from "node:path";
 export interface Config {
   stateDir: string;
   gatewayTokenPath: string;
-  gatewayToken: string;
+  /**
+   * Gateway token if we managed to read one, otherwise undefined. None of the
+   * tool handlers actually need it today — they all shell out to the
+   * `openclaw` CLI which picks up its own auth — but we still surface it so
+   * future HTTP-direct callers can opt in without another file-read dance.
+   */
+  gatewayToken: string | undefined;
   lcmDbPath: string;
 }
 
@@ -24,12 +30,10 @@ export function resolveLcmDbPath(): string {
 export function loadConfig(): Config {
   const stateDir = resolveStateDir();
   const gatewayTokenPath = join(stateDir, "gateway-token");
-  if (!existsSync(gatewayTokenPath)) {
-    throw new Error(`gateway token not found at ${gatewayTokenPath}; is OpenClaw running?`);
-  }
-  const gatewayToken = readFileSync(gatewayTokenPath, "utf8").trim();
-  if (!gatewayToken) {
-    throw new Error(`gateway token file at ${gatewayTokenPath} is empty`);
+  let gatewayToken: string | undefined;
+  if (existsSync(gatewayTokenPath)) {
+    const raw = readFileSync(gatewayTokenPath, "utf8").trim();
+    if (raw) gatewayToken = raw;
   }
   return {
     stateDir,

@@ -50,8 +50,8 @@ describe("lcmGrepTool (CLI path)", () => {
       expect(result).toHaveLength(1);
       expect(result[0].session_key).toBe("agent:main:main");
       expect(result[0].snippet).toContain("hello");
-      // Gateway-token-dependent loadConfig must NOT be called on the fallback path —
-      // that coupling would turn "CLI down" into a hard fail.
+      // loadConfig() does extra file I/O (gateway-token read) that the sqlite
+      // fallback doesn't need. Skipping it keeps the hot path lean.
       expect(cfg.loadConfig).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
