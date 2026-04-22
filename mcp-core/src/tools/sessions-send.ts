@@ -60,11 +60,15 @@ export const sessionsSendTool = {
     }
 
     // Child finished. Fetch its terminal state from the CLI.
+    // `openclaw sessions --json` returns an envelope `{sessions: [...]}`.
     try {
-      const sessions = await runOpenclawJson<Array<{ session_id: string; status: string; last_message?: string }>>(
-        ["sessions", "list", "--json"],
+      const raw = await runOpenclawJson<{ sessions?: Array<{ session_id: string; status: string; last_message?: string }> }>(
+        ["sessions", "--all-agents", "--json"],
       );
-      const row = Array.isArray(sessions) ? sessions.find(s => s.session_id === session_id) : undefined;
+      const rows = raw && typeof raw === "object" && Array.isArray((raw as { sessions?: unknown }).sessions)
+        ? (raw as { sessions: Array<{ session_id: string; status: string; last_message?: string }> }).sessions
+        : [];
+      const row = rows.find(s => s.session_id === session_id);
       return {
         session_id,
         status: "done" as const,

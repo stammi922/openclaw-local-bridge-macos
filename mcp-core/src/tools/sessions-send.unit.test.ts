@@ -14,18 +14,19 @@ function makeFakeChild(closeDelayMs: number, exitCode = 0) {
 describe("sessionsSendTool", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("returns status=done with last_message when child closes before wait_ms", async () => {
+  it("returns status=done with last_message when child closes before wait_ms (unwraps envelope)", async () => {
     const child = makeFakeChild(10);
     vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
-    vi.mocked(cli.runOpenclawJson).mockResolvedValue([
-      { session_id: "sess-123", status: "done", last_message: "ack" },
-    ]);
+    vi.mocked(cli.runOpenclawJson).mockResolvedValue({
+      sessions: [{ session_id: "sess-123", status: "done", last_message: "ack" }],
+    });
 
     const result = await sessionsSendTool.handler({ session_id: "sess-123", message: "hello", wait_ms: 500 });
     expect(result.status).toBe("done");
     if (result.status !== "done") throw new Error("expected done");
     expect("last_message" in result ? result.last_message : undefined).toBe("ack");
     expect(result.session_id).toBe("sess-123");
+    expect(cli.runOpenclawJson).toHaveBeenCalledWith(["sessions", "--all-agents", "--json"]);
   });
 
   it("returns status=running when wait_ms elapses first", async () => {

@@ -11,7 +11,10 @@ export type SessionsYieldResult = { yielded: true };
 export const sessionsYieldTool = {
   definition: {
     name: "sessions_yield",
-    description: "Yield (end) a session cooperatively with an optional handoff message.",
+    description:
+      "Yield (end) a session cooperatively with an optional handoff message. " +
+      "NOTE: requires upstream `openclaw sessions yield` (not yet available in openclaw 2026.4.15). " +
+      "This tool surfaces the wiring; invoking it today raises EXEC_FAILED until upstream ships the command.",
     inputSchema: {
       type: "object",
       properties: {

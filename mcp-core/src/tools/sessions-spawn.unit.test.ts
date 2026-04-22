@@ -15,22 +15,27 @@ function makeFakeChild(closeDelayMs: number, exitCode = 0) {
 describe("sessionsSpawnTool", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("returns status=done when child closes before wait_ms", async () => {
+  it("returns status=done when child closes before wait_ms (unwraps sessions envelope)", async () => {
     const child = makeFakeChild(10);
-    vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
-    vi.mocked(cli.runOpenclawJson).mockResolvedValue({
-      session_id: "abc",
-      status: "done",
-      last_message: "SUB-PONG",
+    const detachedSpy = vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
+    // The handler generates a random sessionId and passes it to --session-id.
+    // Mock runOpenclawJson dynamically so the envelope row matches that id and
+    // we can assert last_message is surfaced end-to-end.
+    vi.mocked(cli.runOpenclawJson).mockImplementation(async () => {
+      const args = detachedSpy.mock.calls[0][0];
+      const sessionId = args[args.indexOf("--session-id") + 1];
+      return { sessions: [{ session_id: sessionId, status: "done", last_message: "SUB-PONG" }] };
     });
 
     const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500 });
     expect(result.status).toBe("done");
     if (result.status === "done") {
       expect(result.session_id).toMatch(/^[0-9a-f-]{36}$/);
+      expect("last_message" in result ? result.last_message : undefined).toBe("SUB-PONG");
     } else {
       throw new Error("expected done");
     }
+    expect(cli.runOpenclawJson).toHaveBeenCalledWith(["sessions", "--all-agents", "--json"]);
   });
 
   it("returns status=running when wait_ms elapses first", async () => {

@@ -31,9 +31,12 @@ export const memorySearchTool = {
   },
   async handler(rawArgs: unknown): Promise<MemorySearchResult> {
     const { query, limit } = InputSchema.parse(rawArgs);
+    // `openclaw memory search --json` uses `--max-results` (not `--limit`) and
+    // returns an envelope `{results: [...]}`.
     const args = ["memory", "search", "--query", query, "--json"];
-    if (limit !== undefined) args.push("--limit", String(limit));
-    const raw = await runOpenclawJson<MemoryHit[]>(args);
-    return coerceArray<MemoryHit>(raw);
+    if (limit !== undefined) args.push("--max-results", String(limit));
+    const raw = await runOpenclawJson<{ results?: MemoryHit[] }>(args);
+    const envelope = raw && typeof raw === "object" ? raw : {};
+    return coerceArray<MemoryHit>((envelope as { results?: unknown }).results);
   },
 };

@@ -40,8 +40,14 @@ export const sessionStatusTool = {
   },
   async handler(rawArgs: unknown): Promise<SessionStatusResult> {
     const { session_id } = InputSchema.parse(rawArgs);
-    const list = await runOpenclawJson<SessionRow[]>(["sessions", "list", "--json"]);
-    const row = (Array.isArray(list) ? list : []).find(s => s.session_id === session_id);
+    // `openclaw sessions --json` returns an envelope `{sessions: [...]}`; use
+    // `--all-agents` so we can locate a session regardless of which agent owns it.
+    const raw = await runOpenclawJson<{ sessions?: unknown }>(["sessions", "--all-agents", "--json"]);
+    const envelope = raw && typeof raw === "object" ? raw : {};
+    const rows = Array.isArray((envelope as { sessions?: unknown }).sessions)
+      ? (envelope as { sessions: SessionRow[] }).sessions
+      : [];
+    const row = rows.find(s => s.session_id === session_id);
     if (!row) return { error: `session ${session_id} not found`, code: "NOT_FOUND" };
     const preview = row.last_message ? row.last_message.slice(0, 200) : undefined;
     // `last_message_preview` (truncated to 200) is semantically distinct from
