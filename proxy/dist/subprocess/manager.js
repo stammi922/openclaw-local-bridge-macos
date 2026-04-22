@@ -7,6 +7,34 @@
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
 import { isAssistantMessage, isResultMessage, isContentDelta } from "../types/claude-cli.js";
+/**
+ * OpenClaw fork patch: when OPENCLAW_MCP_CONFIG is set, inject
+ * --mcp-config and --strict-mcp-config into the claude CLI args.
+ * Read lazily so tests can mutate the env per-test.
+ */
+function mcpConfigPath() {
+    return process.env.OPENCLAW_MCP_CONFIG;
+}
+function buildArgsImpl(prompt, options) {
+    const mcp = mcpConfigPath();
+    const args = [
+        "--print",
+        "--output-format", "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--model", options.model,
+        "--no-session-persistence",
+        ...(mcp ? ["--mcp-config", mcp, "--strict-mcp-config"] : []),
+        prompt,
+    ];
+    if (options.sessionId) {
+        args.push("--session-id", options.sessionId);
+    }
+    return args;
+}
+export function buildArgs(prompt, options) {
+    return buildArgsImpl(prompt, options);
+}
 const DEFAULT_TIMEOUT = 300000; // 5 minutes
 export class ClaudeSubprocess extends EventEmitter {
     process = null;
@@ -87,21 +115,7 @@ export class ClaudeSubprocess extends EventEmitter {
      * Build CLI arguments array
      */
     buildArgs(prompt, options) {
-        const args = [
-            "--print", // Non-interactive mode
-            "--output-format",
-            "stream-json", // JSON streaming output
-            "--verbose", // Required for stream-json
-            "--include-partial-messages", // Enable streaming chunks
-            "--model",
-            options.model, // Model alias (opus/sonnet/haiku)
-            "--no-session-persistence", // Don't save sessions
-            prompt, // Pass prompt as argument (more reliable than stdin)
-        ];
-        if (options.sessionId) {
-            args.push("--session-id", options.sessionId);
-        }
-        return args;
+        return buildArgsImpl(prompt, options);
     }
     /**
      * Process the buffer and emit parsed messages
