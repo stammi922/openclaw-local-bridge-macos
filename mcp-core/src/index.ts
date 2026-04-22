@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { loadConfig } from "./config.js";
 import { sessionsSpawnTool } from "./tools/sessions-spawn.js";
 import { sessionStatusTool } from "./tools/session-status.js";
+import { sessionsListTool } from "./tools/sessions-list.js";
 
 async function main() {
   const config = loadConfig();
@@ -20,6 +21,7 @@ async function main() {
   }> = {
     [sessionsSpawnTool.definition.name]: sessionsSpawnTool,
     [sessionStatusTool.definition.name]: sessionStatusTool,
+    [sessionsListTool.definition.name]: sessionsListTool,
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
