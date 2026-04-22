@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig } from "./config.js";
 import { sessionsSpawnTool } from "./tools/sessions-spawn.js";
+import { sessionStatusTool } from "./tools/session-status.js";
 
 async function main() {
   const config = loadConfig();
@@ -18,6 +19,7 @@ async function main() {
     handler: (args: unknown) => Promise<unknown>;
   }> = {
     [sessionsSpawnTool.definition.name]: sessionsSpawnTool,
+    [sessionStatusTool.definition.name]: sessionStatusTool,
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
