@@ -12,11 +12,19 @@ proxy_install_dir()   { echo "$HOME/.openclaw/bridge/claude-max-api-proxy"; }
 
 # Compose a minimal, deduped, launchd-safe PATH for the proxy plist.
 # Order: node dir, claude dir, npm-global bin, system dirs. dedupes blanks.
+#
+# `npm bin -g` was removed in npm 9+ and emits an error on stdout, so we
+# derive the global bin from `npm prefix -g` (e.g. /opt/homebrew) and
+# append /bin. If npm isn't present or the prefix lookup fails, we skip
+# the npm entry entirely — the system dirs below still cover the usual
+# install locations.
 compose_plist_path() {
-  local node_bin claude_bin npm_global_bin
+  local node_bin claude_bin npm_prefix npm_global_bin=""
   node_bin="$(get_node_bin)"
   claude_bin="$(get_claude_bin)"
-  npm_global_bin="$(npm bin -g 2>/dev/null || true)"
+  if npm_prefix="$(npm prefix -g 2>/dev/null)" && [[ -n "$npm_prefix" && -d "$npm_prefix/bin" ]]; then
+    npm_global_bin="$npm_prefix/bin"
+  fi
   local parts=()
   [[ -n "$node_bin"       ]] && parts+=("$(dirname "$node_bin")")
   [[ -n "$claude_bin"     ]] && parts+=("$(dirname "$claude_bin")")
