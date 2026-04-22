@@ -51,6 +51,7 @@ export declare class ClaudeSubprocess extends EventEmitter {
      */
     isRunning(): boolean;
 }
+export declare function buildArgs(prompt: string, options: SubprocessOptions): string[];
 /**
  * Verify that Claude CLI is installed and accessible
  */
