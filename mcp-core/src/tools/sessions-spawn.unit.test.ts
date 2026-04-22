@@ -25,8 +25,12 @@ describe("sessionsSpawnTool", () => {
     });
 
     const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500 });
-    expect((result as any).status).toBe("done");
-    expect((result as any).session_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(result.status).toBe("done");
+    if (result.status === "done") {
+      expect(result.session_id).toMatch(/^[0-9a-f-]{36}$/);
+    } else {
+      throw new Error("expected done");
+    }
   });
 
   it("returns status=running when wait_ms elapses first", async () => {
@@ -34,9 +38,13 @@ describe("sessionsSpawnTool", () => {
     vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
 
     const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 50 });
-    expect((result as any).status).toBe("running");
-    expect((result as any).session_id).toBeTruthy();
-    expect((result as any).result).toBeUndefined();
+    expect(result.status).toBe("running");
+    if (result.status === "running") {
+      expect(result.session_id).toBeTruthy();
+    } else {
+      throw new Error("expected running");
+    }
+    expect("result" in result ? (result as { result?: unknown }).result : undefined).toBeUndefined();
   });
 
   it("passes --model when model override provided", async () => {
@@ -48,5 +56,20 @@ describe("sessionsSpawnTool", () => {
     const args = detachedSpy.mock.calls[0][0];
     expect(args).toContain("--model");
     expect(args[args.indexOf("--model") + 1]).toBe("google/gemini-2.5-flash");
+  });
+
+  it("returns status=done with warning when session lookup fails after close", async () => {
+    const child = makeFakeChild(10);
+    vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
+    vi.mocked(cli.runOpenclawJson).mockRejectedValue(new Error("boom"));
+
+    const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500 });
+    expect(result.status).toBe("done");
+    if (result.status === "done" && "warning" in result) {
+      expect(result.warning).toMatch(/session lookup failed: boom/);
+    } else {
+      throw new Error("expected done+warning shape");
+    }
+    expect("result" in result ? result.result : undefined).toBeUndefined();
   });
 });

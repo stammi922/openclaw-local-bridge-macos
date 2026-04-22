@@ -8,6 +8,11 @@ const InputSchema = z.object({
   model: z.string().optional(),
 });
 
+export type SessionsSpawnResult =
+  | { session_id: string; status: "running" }
+  | { session_id: string; status: "done"; exit_code: number; result?: string }
+  | { session_id: string; status: "done"; exit_code: number; warning: string };
+
 export const sessionsSpawnTool = {
   definition: {
     name: "sessions_spawn",
@@ -16,14 +21,20 @@ export const sessionsSpawnTool = {
     inputSchema: {
       type: "object",
       properties: {
-        task: { type: "string", description: "Prompt for the subagent" },
-        wait_ms: { type: "number", description: "Max wait before returning running (default 15000, max 600000)" },
+        task: { type: "string", description: "Prompt for the subagent", minLength: 1 },
+        wait_ms: {
+          type: "integer",
+          description: "Max wait before returning running (default 15000, max 600000)",
+          minimum: 0,
+          maximum: 600_000,
+          default: 15_000,
+        },
         model: { type: "string", description: "Optional model override (e.g. google/gemini-2.5-flash)" },
       },
       required: ["task"],
     },
   },
-  async handler(rawArgs: unknown): Promise<unknown> {
+  async handler(rawArgs: unknown): Promise<SessionsSpawnResult> {
     const { task, wait_ms, model } = InputSchema.parse(rawArgs);
     const sessionId = randomUUID();
     const args = ["agent", "--agent", "main", "--session-id", sessionId, "--message", task];
@@ -34,9 +45,17 @@ export const sessionsSpawnTool = {
     const closePromise = new Promise<number>((resolve) => {
       child.once("close", (code: number | null) => resolve(code ?? -1));
     });
-    const timeoutPromise = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), wait_ms));
+    let timer: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), wait_ms);
+    });
 
-    const winner = await Promise.race([closePromise, timeoutPromise]);
+    let winner: number | "timeout";
+    try {
+      winner = await Promise.race([closePromise, timeoutPromise]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
 
     if (winner === "timeout") {
       return { session_id: sessionId, status: "running" as const };
@@ -51,6 +70,7 @@ export const sessionsSpawnTool = {
       return {
         session_id: sessionId,
         status: "done" as const,
+        // Tool-layer renames CLI's `last_message` → `result` for consistency with MCP return conventions.
         result: row?.last_message,
         exit_code: winner,
       };
@@ -59,7 +79,7 @@ export const sessionsSpawnTool = {
         session_id: sessionId,
         status: "done" as const,
         exit_code: winner,
-        warning: `subagent exited ${winner} but session lookup failed: ${(err as Error).message}`,
+        warning: `session lookup failed: ${(err as Error).message}`,
       };
     }
   },
