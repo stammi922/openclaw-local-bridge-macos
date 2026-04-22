@@ -37,14 +37,23 @@ describe("sessionsSpawnTool", () => {
     expect(result.session_id).toBeTruthy();
   });
 
-  it("passes --model when model override provided", async () => {
+  it("rejects a `model` field in input (openclaw agent --model was removed in 2026.4.21)", async () => {
+    const child = makeFakeChild(10);
+    vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
+
+    await expect(
+      sessionsSpawnTool.handler({ task: "ping", wait_ms: 500, model: "google/gemini-2.5-flash" } as never),
+    ).rejects.toThrow(/unrecognized|model/i);
+    expect(cli.runOpenclawDetached).not.toHaveBeenCalled();
+  });
+
+  it("never passes --model to the CLI", async () => {
     const child = makeFakeChild(10);
     const detachedSpy = vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
 
-    await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500, model: "google/gemini-2.5-flash" });
+    await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500 });
     const args = detachedSpy.mock.calls[0][0];
-    expect(args).toContain("--model");
-    expect(args[args.indexOf("--model") + 1]).toBe("google/gemini-2.5-flash");
+    expect(args).not.toContain("--model");
   });
 
   it("surfaces non-zero exit codes in exit_code", async () => {

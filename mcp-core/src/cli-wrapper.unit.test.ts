@@ -12,11 +12,11 @@ describe("runOpenclawJson", () => {
         return {} as any;
       }) as any,
     );
-    const result = await runOpenclawJson(["sessions", "list", "--json"]);
+    const result = await runOpenclawJson(["sessions", "--all-agents", "--json"]);
     expect(result).toEqual({ ok: true });
     expect(execFileSpy).toHaveBeenCalledWith(
       "openclaw",
-      ["sessions", "list", "--json"],
+      ["sessions", "--all-agents", "--json"],
       expect.any(Object),
       expect.any(Function),
     );
@@ -40,7 +40,7 @@ describe("runOpenclawJson", () => {
         return {} as any;
       }) as any,
     );
-    await expect(runOpenclawJson(["sessions", "list", "--json"])).rejects.toThrow(/empty stdout.*expected JSON/);
+    await expect(runOpenclawJson(["sessions", "--all-agents", "--json"])).rejects.toThrow(/empty stdout.*expected JSON/);
   });
 
   it("throws when stdout is not valid JSON, preserving first 200 chars", async () => {

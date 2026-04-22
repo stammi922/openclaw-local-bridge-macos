@@ -5,7 +5,6 @@ import { runOpenclawDetached } from "../cli-wrapper.js";
 const InputSchema = z.object({
   task: z.string().min(1),
   wait_ms: z.number().int().min(0).max(600_000).optional().default(15_000),
-  model: z.string().optional(),
 }).strict();
 
 export type SessionsSpawnResult =
@@ -28,17 +27,15 @@ export const sessionsSpawnTool = {
           maximum: 600_000,
           default: 15_000,
         },
-        model: { type: "string", description: "Optional model override (e.g. google/gemini-2.5-flash)" },
       },
       required: ["task"],
       additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<SessionsSpawnResult> {
-    const { task, wait_ms, model } = InputSchema.parse(rawArgs);
+    const { task, wait_ms } = InputSchema.parse(rawArgs);
     const sessionId = randomUUID();
     const args = ["agent", "--agent", "main", "--session-id", sessionId, "--message", task];
-    if (model) args.push("--model", model);
 
     const child = runOpenclawDetached(args);
 
