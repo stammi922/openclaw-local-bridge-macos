@@ -39,4 +39,13 @@ describe("buildArgs", () => {
     expect(args).toContain("--session-id");
     expect(args[args.indexOf("--session-id") + 1]).toBe("abc");
   });
+
+  it("places --mcp-config before prompt and --session-id after, together", () => {
+    process.env.OPENCLAW_MCP_CONFIG = "/tmp/mcp.json";
+    const args = buildArgs("hello", { model: "sonnet", sessionId: "abc" });
+    const promptIdx = args.indexOf("hello");
+    expect(args.indexOf("--mcp-config")).toBeLessThan(promptIdx);
+    expect(args.indexOf("--strict-mcp-config")).toBeLessThan(promptIdx);
+    expect(args.indexOf("--session-id")).toBeGreaterThan(promptIdx);
+  });
 });
