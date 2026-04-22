@@ -23,7 +23,7 @@ export const sessionsListTool = {
       type: "object",
       properties: {
         agent_id: { type: "string" },
-        active_only: { type: "boolean" },
+        active_only: { type: "boolean", default: false },
       },
     },
   },

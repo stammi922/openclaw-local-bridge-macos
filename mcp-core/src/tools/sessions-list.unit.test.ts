@@ -35,4 +35,23 @@ describe("sessionsListTool", () => {
     expect(result).toHaveLength(1);
     expect(result[0].session_id).toBe("b");
   });
+
+  it("combines agent_id and active_only with AND semantics", async () => {
+    vi.mocked(cli.runOpenclawJson).mockResolvedValue([
+      { session_id: "a", status: "done", agent: "main" },
+      { session_id: "b", status: "running", agent: "main" },
+      { session_id: "c", status: "running", agent: "other" },
+    ]);
+    const result = await sessionsListTool.handler({ agent_id: "main", active_only: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].session_id).toBe("b");
+  });
+
+  it("returns empty array when CLI returns a non-array payload", async () => {
+    // Parallel to the guard added in session-status: if the CLI ever emits an object
+    // envelope or null, the tool must not throw — it treats it as an empty result.
+    vi.mocked(cli.runOpenclawJson).mockResolvedValue({ unexpected: "shape" } as never);
+    const result = await sessionsListTool.handler({});
+    expect(result).toEqual([]);
+  });
 });
