@@ -9,6 +9,7 @@ import { sessionsListTool } from "./tools/sessions-list.js";
 import { sessionsSendTool } from "./tools/sessions-send.js";
 import { sessionsYieldTool } from "./tools/sessions-yield.js";
 import { memorySearchTool } from "./tools/memory-search.js";
+import { lcmGrepTool } from "./tools/lcm-grep.js";
 
 async function main() {
   const config = loadConfig();
@@ -28,6 +29,7 @@ async function main() {
     [sessionsSendTool.definition.name]: sessionsSendTool,
     [sessionsYieldTool.definition.name]: sessionsYieldTool,
     [memorySearchTool.definition.name]: memorySearchTool,
+    [lcmGrepTool.definition.name]: lcmGrepTool,
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
