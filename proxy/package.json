@@ -9,12 +9,9 @@
     "claude-max-api": "dist/server/standalone.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "node -e \"console.log('proxy: vendored dist/ — nothing to build (see UPSTREAM.md)')\"",
     "start": "node dist/server/standalone.js",
-    "test": "vitest run",
-    "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build"
+    "test": "vitest run"
   },
   "keywords": [
     "claude",
