@@ -126,6 +126,9 @@ async function main() {
   // --- Initial snapshot: openclaw sessions --all-agents --json → {sessions: [...]}
   const initial: DisplaySession[] = [];
   try {
+    if (!values.json) {
+      process.stderr.write("openclaw-watch: loading sessions…\n");
+    }
     const out = execFileSync(
       "openclaw",
       ["sessions", "--all-agents", "--json"],
@@ -182,7 +185,10 @@ async function main() {
     }
   });
 
+  let exiting = false;
   const cleanup = () => {
+    if (exiting) return;
+    exiting = true;
     try {
       child.kill("SIGTERM");
     } catch {
@@ -195,6 +201,7 @@ async function main() {
   process.on("SIGTERM", cleanup);
 
   child.on("exit", (code) => {
+    if (exiting) return;
     process.stderr.write(
       `openclaw-watch: logs stream exited (code ${code ?? "null"})\n`,
     );
