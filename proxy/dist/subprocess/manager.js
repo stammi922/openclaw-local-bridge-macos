@@ -11,9 +11,22 @@ import { isAssistantMessage, isResultMessage, isContentDelta } from "../types/cl
  * OpenClaw fork patch: when OPENCLAW_MCP_CONFIG is set, inject
  * --mcp-config and --strict-mcp-config into the claude CLI args.
  * Read lazily so tests can mutate the env per-test.
+ *
+ * Claude Code's non-interactive (--print) mode does not honour
+ * settings.json permissions.allow for MCP tools — every mcp__* call
+ * still hits the permission prompt and then fails because there is
+ * no interactive approver. We opt in to bypassPermissions whenever
+ * MCP is active; the allow-list in ~/.claude/settings.json is still
+ * the user's consent signal (see install.sh step 10), this flag just
+ * keeps the subprocess from deadlocking against an unreachable prompt.
+ * OPENCLAW_MCP_PERMISSION_MODE can override the mode for ops who want
+ * something stricter (e.g. "acceptEdits" with explicit --allowedTools).
  */
 function mcpConfigPath() {
     return process.env.OPENCLAW_MCP_CONFIG;
+}
+function mcpPermissionMode() {
+    return process.env.OPENCLAW_MCP_PERMISSION_MODE || "bypassPermissions";
 }
 function buildArgsImpl(prompt, options) {
     const mcp = mcpConfigPath();
@@ -24,7 +37,11 @@ function buildArgsImpl(prompt, options) {
         "--include-partial-messages",
         "--model", options.model,
         "--no-session-persistence",
-        ...(mcp ? ["--mcp-config", mcp, "--strict-mcp-config"] : []),
+        ...(mcp ? [
+            "--mcp-config", mcp,
+            "--strict-mcp-config",
+            "--permission-mode", mcpPermissionMode(),
+        ] : []),
         prompt,
     ];
     if (options.sessionId) {

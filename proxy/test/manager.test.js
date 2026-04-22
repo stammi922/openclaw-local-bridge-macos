@@ -5,25 +5,41 @@ describe("buildArgs", () => {
   const basePrompt = "hello";
   const baseOpts = { model: "sonnet", sessionId: undefined };
   const origEnv = process.env.OPENCLAW_MCP_CONFIG;
+  const origMode = process.env.OPENCLAW_MCP_PERMISSION_MODE;
 
-  beforeEach(() => { delete process.env.OPENCLAW_MCP_CONFIG; });
+  beforeEach(() => {
+    delete process.env.OPENCLAW_MCP_CONFIG;
+    delete process.env.OPENCLAW_MCP_PERMISSION_MODE;
+  });
   afterEach(() => {
     if (origEnv === undefined) delete process.env.OPENCLAW_MCP_CONFIG;
     else process.env.OPENCLAW_MCP_CONFIG = origEnv;
+    if (origMode === undefined) delete process.env.OPENCLAW_MCP_PERMISSION_MODE;
+    else process.env.OPENCLAW_MCP_PERMISSION_MODE = origMode;
   });
 
-  it("omits --mcp-config when OPENCLAW_MCP_CONFIG is unset", () => {
+  it("omits --mcp-config, --strict-mcp-config and --permission-mode when OPENCLAW_MCP_CONFIG is unset", () => {
     const args = buildArgs(basePrompt, baseOpts);
     expect(args).not.toContain("--mcp-config");
     expect(args).not.toContain("--strict-mcp-config");
+    expect(args).not.toContain("--permission-mode");
   });
 
-  it("includes --mcp-config and --strict-mcp-config when OPENCLAW_MCP_CONFIG is set", () => {
+  it("includes --mcp-config, --strict-mcp-config, and --permission-mode when OPENCLAW_MCP_CONFIG is set", () => {
     process.env.OPENCLAW_MCP_CONFIG = "/tmp/mcp.json";
     const args = buildArgs(basePrompt, baseOpts);
     expect(args).toContain("--mcp-config");
     expect(args[args.indexOf("--mcp-config") + 1]).toBe("/tmp/mcp.json");
     expect(args).toContain("--strict-mcp-config");
+    expect(args).toContain("--permission-mode");
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("bypassPermissions");
+  });
+
+  it("honours OPENCLAW_MCP_PERMISSION_MODE override", () => {
+    process.env.OPENCLAW_MCP_CONFIG = "/tmp/mcp.json";
+    process.env.OPENCLAW_MCP_PERMISSION_MODE = "acceptEdits";
+    const args = buildArgs(basePrompt, baseOpts);
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("acceptEdits");
   });
 
   it("preserves --model and --no-session-persistence", () => {
