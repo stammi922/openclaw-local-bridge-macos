@@ -224,12 +224,12 @@ the `claude` CLI didn't load the MCP servers. Check, in this order:
 **`Gateway agent failed … ENOENT mkdir '/agents'`** — OpenClaw's gateway
 daemon runs under launchd with `cwd=/`, and `openclaw.json` resolves
 `"agentDir": "./agents/main"` relative to that, so it tries to create
-`/agents` and falls back to the embedded agent. This is an upstream
-OpenClaw issue, not a bridge bug; the fallback is functional but slower.
-To fix permanently, add
-`<key>WorkingDirectory</key><string>/Users/USERNAME</string>` to
-`~/Library/LaunchAgents/ai.openclaw.gateway.plist` and reload the
-service.
+`/agents`. `./install.sh` step 8 already injects
+`<key>WorkingDirectory</key><string>$HOME</string>` into the gateway
+plist to keep the daemon off `cwd=/`. **However**, `openclaw update`
+re-renders that plist from its own template (which still omits the
+key), so after every upstream update re-run `./install.sh` to restore
+the patch and reload the gateway.
 
 **Subagent turn times out with `LLM request timed out`** — OpenClaw's
 per-assistant-turn HTTP client has a ~180s–256s timeout, but a nested
