@@ -5,7 +5,7 @@ const InputSchema = z.object({
   session_id: z.string().min(1),
   message: z.string().min(1),
   wait_ms: z.number().int().min(0).max(600_000).optional().default(15_000),
-});
+}).strict();
 
 export type SessionsSendResult =
   | { session_id: string; status: "running" }
@@ -31,6 +31,7 @@ export const sessionsSendTool = {
         },
       },
       required: ["session_id", "message"],
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<SessionsSendResult> {

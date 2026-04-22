@@ -5,7 +5,7 @@ import { coerceArray } from "../json-utils.js";
 const InputSchema = z.object({
   query: z.string().min(1),
   limit: z.number().int().min(1).max(100).optional(),
-});
+}).strict();
 
 export type MemoryHit = { path: string; score: number; snippet: string };
 export type MemorySearchResult = MemoryHit[];
@@ -26,6 +26,7 @@ export const memorySearchTool = {
         },
       },
       required: ["query"],
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<MemorySearchResult> {

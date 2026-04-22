@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { runOpenclawJson } from "../cli-wrapper.js";
 
-const InputSchema = z.object({ enabled_only: z.boolean().optional().default(false) });
+const InputSchema = z.object({ enabled_only: z.boolean().optional().default(false) }).strict();
 
 export type CronJob = { id: string; enabled: boolean; [k: string]: unknown };
 export type CronListResult = CronJob[];
@@ -19,6 +19,7 @@ export const cronListTool = {
           default: false,
         },
       },
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<CronListResult> {

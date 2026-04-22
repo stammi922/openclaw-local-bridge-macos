@@ -6,7 +6,7 @@ const InputSchema = z.object({
   task: z.string().min(1),
   wait_ms: z.number().int().min(0).max(600_000).optional().default(15_000),
   model: z.string().optional(),
-});
+}).strict();
 
 export type SessionsSpawnResult =
   | { session_id: string; status: "running" }
@@ -32,6 +32,7 @@ export const sessionsSpawnTool = {
         model: { type: "string", description: "Optional model override (e.g. google/gemini-2.5-flash)" },
       },
       required: ["task"],
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<SessionsSpawnResult> {

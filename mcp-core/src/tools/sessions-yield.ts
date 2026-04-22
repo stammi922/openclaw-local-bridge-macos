@@ -4,7 +4,7 @@ import { runOpenclawJson } from "../cli-wrapper.js";
 const InputSchema = z.object({
   session_id: z.string().min(1),
   handoff_message: z.string().optional(),
-});
+}).strict();
 
 export type SessionsYieldResult = { yielded: true };
 
@@ -19,6 +19,7 @@ export const sessionsYieldTool = {
         handoff_message: { type: "string", description: "Optional message to pass to the next actor" },
       },
       required: ["session_id"],
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<SessionsYieldResult> {

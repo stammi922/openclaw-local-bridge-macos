@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { runOpenclawJson } from "../cli-wrapper.js";
 
-const InputSchema = z.object({ session_id: z.string().min(1) });
+const InputSchema = z.object({ session_id: z.string().min(1) }).strict();
 
 type SessionRow = {
   session_id: string;
@@ -35,6 +35,7 @@ export const sessionStatusTool = {
         session_id: { type: "string", minLength: 1, description: "Session UUID" },
       },
       required: ["session_id"],
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<SessionStatusResult> {

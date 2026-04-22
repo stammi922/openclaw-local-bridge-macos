@@ -5,7 +5,7 @@ import { coerceArray } from "../json-utils.js";
 const InputSchema = z.object({
   agent_id: z.string().optional(),
   active_only: z.boolean().optional().default(false),
-});
+}).strict();
 
 export type SessionRow = {
   session_id: string;
@@ -26,6 +26,7 @@ export const sessionsListTool = {
         agent_id: { type: "string" },
         active_only: { type: "boolean", default: false },
       },
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<SessionsListResult> {

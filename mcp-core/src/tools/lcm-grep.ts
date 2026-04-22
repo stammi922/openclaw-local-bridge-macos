@@ -7,7 +7,7 @@ import { resolveLcmDbPath } from "../config.js";
 const InputSchema = z.object({
   pattern: z.string().min(1),
   limit: z.number().int().min(1).max(500).optional().default(50),
-});
+}).strict();
 
 export type LcmGrepHit = { session_key: string; message_id: string; snippet: string };
 export type LcmGrepResult = LcmGrepHit[];
@@ -64,6 +64,7 @@ export const lcmGrepTool = {
         },
       },
       required: ["pattern"],
+      additionalProperties: false,
     },
   },
   async handler(rawArgs: unknown): Promise<LcmGrepResult> {
