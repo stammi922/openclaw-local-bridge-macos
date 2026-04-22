@@ -15,7 +15,7 @@ describe("cronListTool", () => {
       ],
     });
     const result = await cronListTool.handler({});
-    expect(result.jobs).toHaveLength(2);
+    expect(result).toHaveLength(2);
   });
 
   it("filters to enabled_only=true", async () => {
@@ -26,13 +26,22 @@ describe("cronListTool", () => {
       ],
     });
     const result = await cronListTool.handler({ enabled_only: true });
-    expect(result.jobs).toHaveLength(1);
-    expect(result.jobs[0].id).toBe("daily");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("daily");
   });
 
-  it("returns empty jobs when CLI payload is malformed", async () => {
+  it("returns empty array when CLI payload is malformed", async () => {
     vi.mocked(cli.runOpenclawJson).mockResolvedValue({ oops: "wrong shape" } as never);
     const result = await cronListTool.handler({});
-    expect(result.jobs).toEqual([]);
+    expect(result).toEqual([]);
+  });
+
+  it("accepts a bare array payload from CLI (forward-compat)", async () => {
+    vi.mocked(cli.runOpenclawJson).mockResolvedValue([
+      { id: "daily", enabled: true },
+    ] as never);
+    const result = await cronListTool.handler({});
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("daily");
   });
 });

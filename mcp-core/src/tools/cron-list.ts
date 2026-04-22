@@ -4,7 +4,7 @@ import { runOpenclawJson } from "../cli-wrapper.js";
 const InputSchema = z.object({ enabled_only: z.boolean().optional().default(false) });
 
 export type CronJob = { id: string; enabled: boolean; [k: string]: unknown };
-export type CronListResult = { jobs: CronJob[] };
+export type CronListResult = CronJob[];
 
 export const cronListTool = {
   definition: {
@@ -23,11 +23,14 @@ export const cronListTool = {
   },
   async handler(rawArgs: unknown): Promise<CronListResult> {
     const { enabled_only } = InputSchema.parse(rawArgs);
-    const raw = await runOpenclawJson<{ jobs: CronJob[] }>(["cron", "list", "--json"]);
-    const jobs =
-      raw && typeof raw === "object" && Array.isArray((raw as { jobs?: unknown }).jobs)
+    const raw = await runOpenclawJson<{ jobs: CronJob[] } | CronJob[]>(["cron", "list", "--json"]);
+    // Upstream CLI returns `{jobs: [...]}`; unwrap to a bare array to match the
+    // shape of every other list tool (sessions_list, agents_list, memory_search, lcm_grep).
+    const jobs: CronJob[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object" && Array.isArray((raw as { jobs?: unknown }).jobs)
         ? (raw as { jobs: CronJob[] }).jobs
         : [];
-    return { jobs: enabled_only ? jobs.filter(j => j.enabled) : jobs };
+    return enabled_only ? jobs.filter(j => j.enabled) : jobs;
   },
 };

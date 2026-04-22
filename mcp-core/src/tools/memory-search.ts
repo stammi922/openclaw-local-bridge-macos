@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runOpenclawJson } from "../cli-wrapper.js";
+import { coerceArray } from "../json-utils.js";
 
 const InputSchema = z.object({
   query: z.string().min(1),
@@ -32,6 +33,6 @@ export const memorySearchTool = {
     const args = ["memory", "search", "--query", query, "--json"];
     if (limit !== undefined) args.push("--limit", String(limit));
     const raw = await runOpenclawJson<MemoryHit[]>(args);
-    return Array.isArray(raw) ? raw : [];
+    return coerceArray<MemoryHit>(raw);
   },
 };

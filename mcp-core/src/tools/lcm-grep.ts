@@ -1,6 +1,7 @@
 import { z } from "zod";
 import Database from "better-sqlite3";
 import { runOpenclawJson } from "../cli-wrapper.js";
+import { coerceArray } from "../json-utils.js";
 import { resolveLcmDbPath } from "../config.js";
 
 const InputSchema = z.object({
@@ -20,7 +21,7 @@ function escapeLike(pattern: string): string {
 async function viaCli(pattern: string, limit: number): Promise<LcmGrepResult> {
   const args = ["memory", "grep", "--pattern", pattern, "--json", "--limit", String(limit)];
   const raw = await runOpenclawJson<LcmGrepHit[]>(args);
-  return Array.isArray(raw) ? raw : [];
+  return coerceArray<LcmGrepHit>(raw);
 }
 
 function viaSqlite(pattern: string, limit: number, dbPath: string): LcmGrepResult {
