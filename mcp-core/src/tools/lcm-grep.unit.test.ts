@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import * as cli from "../cli-wrapper.js";
 import * as cfg from "../config.js";
 import { lcmGrepTool } from "./lcm-grep.js";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -7,94 +6,99 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-vi.mock("../cli-wrapper.js");
 vi.mock("../config.js");
 
-describe("lcmGrepTool (CLI path)", () => {
+// Mirrors the real openclaw 2026.4.21 lcm.db schema: session_key lives on
+// `conversations`, messages reference it via conversation_id.
+function seedLcmDb(dbPath: string, rows: Array<{ session_key: string; content: string; seq?: number }>) {
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE conversations (
+      conversation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_key TEXT NOT NULL UNIQUE
+    );
+    CREATE TABLE messages (
+      message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL REFERENCES conversations(conversation_id),
+      seq INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      token_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  const upsertConv = db.prepare(
+    "INSERT INTO conversations (session_key) VALUES (?) ON CONFLICT(session_key) DO UPDATE SET session_key=session_key RETURNING conversation_id",
+  );
+  const insertMsg = db.prepare(
+    "INSERT INTO messages (conversation_id, seq, role, content) VALUES (?, ?, 'assistant', ?)",
+  );
+  for (const r of rows) {
+    const { conversation_id } = upsertConv.get(r.session_key) as { conversation_id: number };
+    insertMsg.run(conversation_id, r.seq ?? 0, r.content);
+  }
+  db.close();
+}
+
+describe("lcmGrepTool", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("uses openclaw memory grep --json when CLI succeeds", async () => {
-    vi.mocked(cli.runOpenclawJson).mockResolvedValue([
-      { session_key: "agent:main:main", message_id: "1", snippet: "hello" },
-    ]);
-    const result = await lcmGrepTool.handler({ pattern: "hello" });
-    expect(result).toHaveLength(1);
-    expect(cli.runOpenclawJson).toHaveBeenCalledWith(
-      expect.arrayContaining(["memory", "grep", "--pattern", "hello", "--json"]),
-    );
-  });
-
-  it("falls back to direct sqlite when CLI returns unsupported error", async () => {
-    vi.mocked(cli.runOpenclawJson).mockRejectedValue(new Error("unknown subcommand: grep"));
-
+  it("reads session_key via JOIN on conversations", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lcm-"));
     try {
       const dbPath = join(dir, "lcm.db");
-      const db = new Database(dbPath);
-      db.exec(`
-        CREATE TABLE messages (
-          session_key TEXT,
-          message_id TEXT PRIMARY KEY,
-          content TEXT,
-          created_at TEXT
-        );
-      `);
-      db.prepare("INSERT INTO messages VALUES (?, ?, ?, ?)").run(
-        "agent:main:main", "m1", "hello world", "2026-04-21T10:00:00Z",
-      );
-      db.close();
-
+      seedLcmDb(dbPath, [
+        { session_key: "agent:main:main", content: "hello world" },
+      ]);
       vi.mocked(cfg.resolveLcmDbPath).mockReturnValue(dbPath);
 
       const result = await lcmGrepTool.handler({ pattern: "hello" });
+
       expect(result).toHaveLength(1);
       expect(result[0].session_key).toBe("agent:main:main");
       expect(result[0].snippet).toContain("hello");
-      // loadConfig() does extra file I/O (gateway-token read) that the sqlite
-      // fallback doesn't need. Skipping it keeps the hot path lean.
-      expect(cfg.loadConfig).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   it("escapes LIKE wildcards so user pattern is treated as a literal substring", async () => {
-    vi.mocked(cli.runOpenclawJson).mockRejectedValue(new Error("cli unavailable"));
-
     const dir = mkdtempSync(join(tmpdir(), "lcm-"));
     try {
       const dbPath = join(dir, "lcm.db");
-      const db = new Database(dbPath);
-      db.exec(`
-        CREATE TABLE messages (
-          session_key TEXT,
-          message_id TEXT PRIMARY KEY,
-          content TEXT,
-          created_at TEXT
-        );
-      `);
-      const insert = db.prepare("INSERT INTO messages VALUES (?, ?, ?, ?)");
-      // Literal "50%": only "discount: 50% off" should match — NOT "50 items" despite
-      // raw LIKE '50%' matching anything starting with "50".
-      insert.run("s", "m1", "discount: 50% off", "2026-04-21T10:00:00Z");
-      insert.run("s", "m2", "50 items total",    "2026-04-21T10:00:01Z");
-      db.close();
-
+      // Literal "50%" should match "discount: 50% off" but NOT "50 items".
+      // Raw LIKE '%50%%' would match both if we didn't escape the '%'.
+      seedLcmDb(dbPath, [
+        { session_key: "s", content: "discount: 50% off", seq: 0 },
+        { session_key: "s", content: "50 items total",    seq: 1 },
+      ]);
       vi.mocked(cfg.resolveLcmDbPath).mockReturnValue(dbPath);
 
       const result = await lcmGrepTool.handler({ pattern: "50%" });
+
       expect(result).toHaveLength(1);
-      expect(result[0].message_id).toBe("m1");
+      expect(result[0].snippet).toContain("50% off");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("returns empty array when CLI succeeds with non-array payload (does not fall back)", async () => {
-    vi.mocked(cli.runOpenclawJson).mockResolvedValue({ unexpected: "shape" } as never);
-    const result = await lcmGrepTool.handler({ pattern: "x" });
-    expect(result).toEqual([]);
-    // sqlite path should NOT have been taken — we only fall back on error
-    expect(cfg.resolveLcmDbPath).not.toHaveBeenCalled();
+  it("respects the limit parameter", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lcm-"));
+    try {
+      const dbPath = join(dir, "lcm.db");
+      seedLcmDb(dbPath, [
+        { session_key: "s", content: "ping one",   seq: 0 },
+        { session_key: "s", content: "ping two",   seq: 1 },
+        { session_key: "s", content: "ping three", seq: 2 },
+      ]);
+      vi.mocked(cfg.resolveLcmDbPath).mockReturnValue(dbPath);
+
+      const result = await lcmGrepTool.handler({ pattern: "ping", limit: 2 });
+
+      expect(result).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
