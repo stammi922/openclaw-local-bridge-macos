@@ -194,14 +194,33 @@ else
   ok "Wrote $PROXY_PLIST"
 
   UID_=$(id -u)
-  launchctl bootout "gui/$UID_/ai.claude-max-api-proxy" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID_" "$PROXY_PLIST"
+
+  # launchctl bootout returns 0 before the service has fully torn down, so a
+  # subsequent bootstrap races the kernel and can fail with "Bootstrap failed:
+  # 5: Input/output error". Wait for the label to leave `launchctl list`, then
+  # retry bootstrap a few times for good measure. Keeps the happy path fast
+  # (bootstrap usually succeeds on first try) without a fixed sleep.
+  launchd_reload() {
+    local label="$1" plist="$2"
+    launchctl bootout "gui/$UID_/$label" 2>/dev/null || true
+    local i=0
+    while (( i < 20 )) && launchctl list | awk '{print $3}' | grep -qx "$label"; do
+      sleep 0.1; i=$((i+1))
+    done
+    i=0
+    while (( i < 10 )); do
+      if launchctl bootstrap "gui/$UID_" "$plist" 2>/dev/null; then return 0; fi
+      sleep 0.2; i=$((i+1))
+    done
+    launchctl bootstrap "gui/$UID_" "$plist"
+  }
+
+  launchd_reload "ai.claude-max-api-proxy" "$PROXY_PLIST"
   launchctl kickstart -k "gui/$UID_/ai.claude-max-api-proxy" || true
   ok "Loaded ai.claude-max-api-proxy"
 
   if [[ -f "$GATEWAY_PLIST" ]]; then
-    launchctl bootout "gui/$UID_/ai.openclaw.gateway" 2>/dev/null || true
-    launchctl bootstrap "gui/$UID_" "$GATEWAY_PLIST"
+    launchd_reload "ai.openclaw.gateway" "$GATEWAY_PLIST"
     ok "Reloaded ai.openclaw.gateway with new env"
   fi
 fi
