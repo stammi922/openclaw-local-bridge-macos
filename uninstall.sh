@@ -36,12 +36,12 @@ PROXY_HOME="$(proxy_install_dir)"
 GATEWAY_PLIST="$(gateway_plist_path)"
 BACKUPS_DIR="$HOME/.openclaw/bridge-backups"
 
-step 1 5 "Stop and unload the proxy launchd service"
+step 1 6 "Stop and unload the proxy launchd service"
 UID_=$(id -u)
 launchctl bootout "gui/$UID_/ai.claude-max-api-proxy" 2>/dev/null || true
 ok "Service unloaded (or wasn't loaded)."
 
-step 2 5 "Remove proxy plist and install dir"
+step 2 6 "Remove proxy plist and install dir"
 if [[ -f "$PROXY_PLIST" ]]; then
   rm -f "$PROXY_PLIST"
   ok "Removed $PROXY_PLIST"
@@ -53,7 +53,7 @@ fi
 # Remove the bridge dir if it's now empty.
 [[ -d "$HOME/.openclaw/bridge" ]] && rmdir "$HOME/.openclaw/bridge" 2>/dev/null || true
 
-step 3 5 "Choose backup to restore"
+step 3 6 "Choose backup to restore"
 if [[ ! -d "$BACKUPS_DIR" ]] || [[ -z "$(ls -A "$BACKUPS_DIR" 2>/dev/null)" ]]; then
   warn "No backups found under $BACKUPS_DIR. Skipping restore."
   RESTORE="none"
@@ -81,7 +81,7 @@ if [[ "$RESTORE" != "none" ]]; then
   fi
 fi
 
-step 4 5 "Restore from $CHOSEN"
+step 4 6 "Restore from $CHOSEN"
 if [[ "$RESTORE" == "none" ]] || [[ -z "$CHOSEN" ]]; then
   info "Skipping restore."
 else
@@ -103,7 +103,35 @@ else
   fi
 fi
 
-step 5 5 "Reload gateway (so restored env / plist is honored)"
+step 5 6 "Unlink MCP bridge binaries and remove mcp-config.json"
+if [[ -d "$HERE/mcp-core" ]]; then
+  (cd "$HERE/mcp-core" && npm unlink 2>/dev/null) || warn "npm unlink failed for mcp-core (may already be unlinked)"
+else
+  info "mcp-core source dir missing — assuming already unlinked."
+fi
+if [[ -d "$HERE/watch-cli" ]]; then
+  (cd "$HERE/watch-cli" && npm unlink 2>/dev/null) || warn "npm unlink failed for watch-cli (may already be unlinked)"
+else
+  info "watch-cli source dir missing — assuming already unlinked."
+fi
+
+MCP_CFG="$HOME/.openclaw/mcp-config.json"
+restored_mcp_cfg=0
+if [[ "$RESTORE" != "none" && -n "${CHOSEN:-}" && -f "$CHOSEN/manifest.json" ]]; then
+  if grep -q '"mcp-config.json"' "$CHOSEN/manifest.json" 2>/dev/null; then
+    restored_mcp_cfg=1
+  fi
+fi
+if (( restored_mcp_cfg )); then
+  info "Leaving $MCP_CFG in place (restored from backup)."
+elif [[ -f "$MCP_CFG" ]]; then
+  rm -f "$MCP_CFG"
+  ok "Removed $MCP_CFG"
+else
+  info "No mcp-config.json to remove."
+fi
+
+step 6 6 "Reload gateway (so restored env / plist is honored)"
 if [[ -f "$GATEWAY_PLIST" ]]; then
   launchctl bootout "gui/$UID_/ai.openclaw.gateway" 2>/dev/null || true
   launchctl bootstrap "gui/$UID_" "$GATEWAY_PLIST"

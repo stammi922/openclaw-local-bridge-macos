@@ -17,3 +17,15 @@ bridge-backups/
 .idea/
 .vscode/
 *.swp
+
+# Node / TypeScript
+node_modules/
+coverage/
+.vitest-temp/
+dist/
+!proxy/dist/
+
+# openclaw CLI creates this in cwd when the gateway endpoint isn't
+# reachable (ENOENT mkdir '/agents' → fallback to relative). The
+# directory contains auth-profiles.json with credentials — never commit.
+agents/

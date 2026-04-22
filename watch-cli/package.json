@@ -1,0 +1,10 @@
+{
+  "name": "@stammi922/openclaw-watch",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "openclaw-watch": "dist/index.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "echo 'watch-cli has no unit tests; covered by E2E'"
+  }
+}

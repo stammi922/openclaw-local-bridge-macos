@@ -1,0 +1,5 @@
+# Override root .gitignore for this workspace.
+# Upstream claude-max-api-proxy ships dist-only on npm (no src/), so
+# dist/ is the canonical artifact for this fork and MUST be committed.
+!dist/
+!dist/**
