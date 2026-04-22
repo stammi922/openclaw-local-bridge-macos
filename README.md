@@ -208,6 +208,41 @@ plist's environment.
 backup from `~/.openclaw/bridge-backups/` and file an issue. The patcher
 runs validate before declaring success, so this should be rare.
 
+**Main agent replies `sessions_spawn is not available in my toolset`** —
+the `claude` CLI didn't load the MCP servers. Check, in this order:
+1. `launchctl getenv OPENCLAW_MCP_CONFIG` prints a path (if empty, the
+   install didn't patch the plist; rerun `./install.sh`).
+2. `cat ~/.openclaw/mcp-config.json` references both `openclaw-core-mcp`
+   and `openclaw` binaries that exist on PATH (`which openclaw-core-mcp`).
+3. `~/.openclaw/logs/claude-max-api-proxy.err.log` records `[Subprocess]
+   Process spawned with PID: …` each turn. If there is no activity
+   after an agent call, the proxy isn't reaching the `claude` CLI at
+   all. If activity is present but the main still sees no MCP tools,
+   the proxy is running pre-patch code — restart it with
+   `launchctl kickstart -k gui/$UID/ai.claude-max-api-proxy`.
+
+**`Gateway agent failed … ENOENT mkdir '/agents'`** — OpenClaw's gateway
+daemon runs under launchd with `cwd=/`, and `openclaw.json` resolves
+`"agentDir": "./agents/main"` relative to that, so it tries to create
+`/agents` and falls back to the embedded agent. This is an upstream
+OpenClaw issue, not a bridge bug; the fallback is functional but slower.
+To fix permanently, add
+`<key>WorkingDirectory</key><string>/Users/USERNAME</string>` to
+`~/Library/LaunchAgents/ai.openclaw.gateway.plist` and reload the
+service.
+
+**Subagent turn times out with `LLM request timed out`** — OpenClaw's
+per-assistant-turn HTTP client has a ~180s–256s timeout, but a nested
+`sessions_spawn` that polls the subagent can legitimately run longer
+because the subagent itself is another `openclaw agent` subprocess
+driving a full `claude --print` turn. The bridge plumbing is working
+(confirm with `~/.openclaw/logs/claude-max-api-proxy.err.log` showing
+steady "Received N bytes of stdout" lines); the limit is in the
+model-router on OpenClaw's side.
+Workarounds: call `sessions_spawn` with a large explicit `wait_ms` so
+the tool returns `done` in a single round-trip, or structure the task
+so the subagent finishes in one fast turn.
+
 ---
 
 ## Vendored dependency
