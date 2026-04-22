@@ -66,7 +66,7 @@ done
 
 # ---------- Steps ----------------------------------------------------------
 
-TOTAL=11
+TOTAL=12
 
 step 1 $TOTAL "Preflight checks"
 require_macos
@@ -266,6 +266,45 @@ else
   PORT="$PORT" "$REPO_ROOT/verify.sh" || warn "verify reported failures — check the table above."
 fi
 
+step 12 $TOTAL "Install MCP bridge binaries (openclaw-core-mcp, openclaw-watch)"
+if (( DRY_RUN )); then
+  dim "  would: (cd $REPO_ROOT && npm install --workspaces --include-workspace-root --no-audit --no-fund)"
+  dim "  would: npm run build -w mcp-core && npm run build -w watch-cli"
+  dim "  would: (cd $REPO_ROOT/mcp-core  && npm link)"
+  dim "  would: (cd $REPO_ROOT/watch-cli && npm link)"
+  dim "  would: verify openclaw-core-mcp and openclaw-watch on PATH"
+  dim "  would: backup existing $HOME/.openclaw/mcp-config.json (if present)"
+  dim "  would render: $HOME/.openclaw/mcp-config.json (from proxy/mcp-config.json.template)"
+else
+  (cd "$REPO_ROOT" && npm install --workspaces --include-workspace-root --no-audit --no-fund)
+  (cd "$REPO_ROOT" && npm run build -w mcp-core && npm run build -w watch-cli)
+
+  link_status=0
+  (cd "$REPO_ROOT/mcp-core"  && npm link) || link_status=$?
+  if (( link_status != 0 )); then
+    warn "npm link for mcp-core exited with status $link_status — continuing."
+  fi
+  link_status=0
+  (cd "$REPO_ROOT/watch-cli" && npm link) || link_status=$?
+  if (( link_status != 0 )); then
+    warn "npm link for watch-cli exited with status $link_status — continuing."
+  fi
+
+  if ! command -v openclaw-core-mcp >/dev/null || ! command -v openclaw-watch >/dev/null; then
+    warn "openclaw-core-mcp and/or openclaw-watch not found on PATH."
+    warn "  Check 'npm config get prefix' and ensure its bin dir is on your PATH."
+  fi
+
+  if [[ -n "${BRIDGE_BACKUP_DIR:-}" ]]; then
+    backup_file "$HOME/.openclaw/mcp-config.json" "mcp-config.json"
+  fi
+
+  mkdir -p "$HOME/.openclaw"
+  sed "s#__HOME__#${HOME}#g" "$REPO_ROOT/proxy/mcp-config.json.template" > "$HOME/.openclaw/mcp-config.json"
+  chmod 600 "$HOME/.openclaw/mcp-config.json"
+  ok "Wrote $HOME/.openclaw/mcp-config.json"
+fi
+
 cat <<EOF
 
 $( ((DRY_RUN)) && echo "DRY-RUN complete. Re-run without --dry-run to apply." || echo "Done." )
@@ -273,6 +312,8 @@ $( ((DRY_RUN)) && echo "DRY-RUN complete. Re-run without --dry-run to apply." ||
 Next steps:
   - Tail logs:     tail -f ~/.openclaw/logs/claude-max-api-proxy.{log,err.log}
   - Test agent:    openclaw agent 'say hi in five words' --agent claude-code
+  - MCP client cfg: $HOME/.openclaw/mcp-config.json
+  - Tail events:    openclaw-watch
   - Uninstall:     ./uninstall.sh
 
 EOF
