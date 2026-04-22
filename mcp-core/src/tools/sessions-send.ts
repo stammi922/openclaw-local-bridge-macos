@@ -9,7 +9,7 @@ const InputSchema = z.object({
 
 export type SessionsSendResult =
   | { session_id: string; status: "running" }
-  | { session_id: string; status: "done"; exit_code: number; reply?: string }
+  | { session_id: string; status: "done"; exit_code: number; last_message?: string }
   | { session_id: string; status: "done"; exit_code: number; warning: string };
 
 export const sessionsSendTool = {
@@ -67,9 +67,7 @@ export const sessionsSendTool = {
       return {
         session_id,
         status: "done" as const,
-        // Tool-layer renames CLI's `last_message` → `reply`. See Task 16 for field-name reconciliation
-        // across sessions_spawn (result), session_status (last_message_preview), sessions_send (reply).
-        reply: row?.last_message,
+        last_message: row?.last_message,
         exit_code: winner,
       };
     } catch (err) {

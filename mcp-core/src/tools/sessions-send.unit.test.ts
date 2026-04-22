@@ -14,7 +14,7 @@ function makeFakeChild(closeDelayMs: number, exitCode = 0) {
 describe("sessionsSendTool", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("returns status=done with reply when child closes before wait_ms", async () => {
+  it("returns status=done with last_message when child closes before wait_ms", async () => {
     const child = makeFakeChild(10);
     vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
     vi.mocked(cli.runOpenclawJson).mockResolvedValue([
@@ -24,7 +24,7 @@ describe("sessionsSendTool", () => {
     const result = await sessionsSendTool.handler({ session_id: "sess-123", message: "hello", wait_ms: 500 });
     expect(result.status).toBe("done");
     if (result.status !== "done") throw new Error("expected done");
-    expect(result.reply).toBe("ack");
+    expect("last_message" in result ? result.last_message : undefined).toBe("ack");
     expect(result.session_id).toBe("sess-123");
   });
 
@@ -55,7 +55,7 @@ describe("sessionsSendTool", () => {
     }
   });
 
-  it("returns status=done with reply=undefined when runOpenclawJson returns unexpected shape", async () => {
+  it("returns status=done with last_message=undefined when runOpenclawJson returns unexpected shape", async () => {
     const child = makeFakeChild(10);
     vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
     vi.mocked(cli.runOpenclawJson).mockResolvedValue({ unexpected: "shape" });
@@ -63,6 +63,6 @@ describe("sessionsSendTool", () => {
     const result = await sessionsSendTool.handler({ session_id: "sess-abc", message: "hello", wait_ms: 500 });
     expect(result.status).toBe("done");
     if (result.status !== "done") throw new Error("expected done");
-    expect(result.reply).toBeUndefined();
+    expect("last_message" in result ? result.last_message : undefined).toBeUndefined();
   });
 });

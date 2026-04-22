@@ -10,7 +10,7 @@ const InputSchema = z.object({
 
 export type SessionsSpawnResult =
   | { session_id: string; status: "running" }
-  | { session_id: string; status: "done"; exit_code: number; result?: string }
+  | { session_id: string; status: "done"; exit_code: number; last_message?: string }
   | { session_id: string; status: "done"; exit_code: number; warning: string };
 
 export const sessionsSpawnTool = {
@@ -70,8 +70,7 @@ export const sessionsSpawnTool = {
       return {
         session_id: sessionId,
         status: "done" as const,
-        // Tool-layer renames CLI's `last_message` → `result` for consistency with MCP return conventions.
-        result: row?.last_message,
+        last_message: row?.last_message,
         exit_code: winner,
       };
     } catch (err) {

@@ -44,7 +44,7 @@ describe("sessionsSpawnTool", () => {
     } else {
       throw new Error("expected running");
     }
-    expect("result" in result ? (result as { result?: unknown }).result : undefined).toBeUndefined();
+    expect("last_message" in result ? (result as { last_message?: unknown }).last_message : undefined).toBeUndefined();
   });
 
   it("passes --model when model override provided", async () => {
@@ -70,6 +70,6 @@ describe("sessionsSpawnTool", () => {
     } else {
       throw new Error("expected done+warning shape");
     }
-    expect("result" in result ? result.result : undefined).toBeUndefined();
+    expect("last_message" in result ? (result as { last_message?: unknown }).last_message : undefined).toBeUndefined();
   });
 });
