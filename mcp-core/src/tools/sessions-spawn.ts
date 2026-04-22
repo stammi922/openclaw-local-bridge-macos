@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { runOpenclawDetached, runOpenclawJson } from "../cli-wrapper.js";
+import { runOpenclawDetached } from "../cli-wrapper.js";
 
 const InputSchema = z.object({
   task: z.string().min(1),
@@ -10,14 +10,13 @@ const InputSchema = z.object({
 
 export type SessionsSpawnResult =
   | { session_id: string; status: "running" }
-  | { session_id: string; status: "done"; exit_code: number; last_message?: string }
-  | { session_id: string; status: "done"; exit_code: number; warning: string };
+  | { session_id: string; status: "done"; exit_code: number };
 
 export const sessionsSpawnTool = {
   definition: {
     name: "sessions_spawn",
     description:
-      "Spawn a new subagent under `main` to run `task`. Waits up to `wait_ms` (default 15s); if the subagent completes within that window, returns status=done with its final message. Otherwise the subagent keeps running in the background and this returns status=running — poll with session_status or watch via openclaw-watch.",
+      "Spawn a new subagent under `main` to run `task`. Waits up to `wait_ms` (default 15s); if the subagent closes within that window, returns status=done with its exit_code. Otherwise the subagent keeps running in the background and this returns status=running — poll with session_status or watch via openclaw-watch. The final model reply is not returned inline; read the session log separately if needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -61,30 +60,6 @@ export const sessionsSpawnTool = {
     if (winner === "timeout") {
       return { session_id: sessionId, status: "running" as const };
     }
-
-    // Child finished. Fetch its terminal state from the CLI.
-    // `openclaw sessions --json` returns an envelope `{sessions: [...]}`.
-    try {
-      const raw = await runOpenclawJson<{ sessions?: Array<{ session_id: string; status: string; last_message?: string }> }>(
-        ["sessions", "--all-agents", "--json"],
-      );
-      const rows = raw && typeof raw === "object" && Array.isArray((raw as { sessions?: unknown }).sessions)
-        ? (raw as { sessions: Array<{ session_id: string; status: string; last_message?: string }> }).sessions
-        : [];
-      const row = rows.find(s => s.session_id === sessionId);
-      return {
-        session_id: sessionId,
-        status: "done" as const,
-        last_message: row?.last_message,
-        exit_code: winner,
-      };
-    } catch (err) {
-      return {
-        session_id: sessionId,
-        status: "done" as const,
-        exit_code: winner,
-        warning: `session lookup failed: ${(err as Error).message}`,
-      };
-    }
+    return { session_id: sessionId, status: "done" as const, exit_code: winner };
   },
 };

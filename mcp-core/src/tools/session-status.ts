@@ -1,34 +1,19 @@
 import { z } from "zod";
 import { runOpenclawJson } from "../cli-wrapper.js";
+import { normalizeSessionRow, type NormalizedSessionRow } from "../session-utils.js";
 
 const InputSchema = z.object({ session_id: z.string().min(1) }).strict();
 
-type SessionRow = {
-  session_id: string;
-  status: string;
-  started_at?: string;
-  updated_at?: string;
-  last_message?: string;
-  model?: string;
-  tokens?: number;
-};
-
 export type SessionStatusResult =
-  | {
-      session_id: string;
-      status: string;
-      started_at?: string;
-      updated_at?: string;
-      last_message_preview?: string;
-      model?: string;
-      tokens?: number;
-    }
+  | NormalizedSessionRow
   | { error: string; code: "NOT_FOUND" };
 
 export const sessionStatusTool = {
   definition: {
     name: "session_status",
-    description: "Return current status and preview of a session by id.",
+    description:
+      "Return normalized metadata for a session by id. Does not include the final agent reply — " +
+      "the CLI's sessions endpoint returns metadata only, and surfacing message content is deferred.",
     inputSchema: {
       type: "object",
       properties: {
@@ -41,26 +26,16 @@ export const sessionStatusTool = {
   async handler(rawArgs: unknown): Promise<SessionStatusResult> {
     const { session_id } = InputSchema.parse(rawArgs);
     // `openclaw sessions --json` returns an envelope `{sessions: [...]}`; use
-    // `--all-agents` so we can locate a session regardless of which agent owns it.
+    // `--all-agents` so the lookup succeeds regardless of which agent owns it.
     const raw = await runOpenclawJson<{ sessions?: unknown }>(["sessions", "--all-agents", "--json"]);
     const envelope = raw && typeof raw === "object" ? raw : {};
-    const rows = Array.isArray((envelope as { sessions?: unknown }).sessions)
-      ? (envelope as { sessions: SessionRow[] }).sessions
+    const rawRows = Array.isArray((envelope as { sessions?: unknown }).sessions)
+      ? ((envelope as { sessions: unknown[] }).sessions)
       : [];
-    const row = rows.find(s => s.session_id === session_id);
-    if (!row) return { error: `session ${session_id} not found`, code: "NOT_FOUND" };
-    const preview = row.last_message ? row.last_message.slice(0, 200) : undefined;
-    // `last_message_preview` (truncated to 200) is semantically distinct from
-    // `last_message` returned by sessions_spawn / sessions_send (untruncated final
-    // message on a finished session). Kept separate names on purpose.
-    return {
-      session_id: row.session_id,
-      status: row.status,
-      started_at: row.started_at,
-      updated_at: row.updated_at,
-      last_message_preview: preview,
-      model: row.model,
-      tokens: row.tokens,
-    };
+    for (const row of rawRows) {
+      const n = normalizeSessionRow(row);
+      if (n && n.session_id === session_id) return n;
+    }
+    return { error: `session ${session_id} not found`, code: "NOT_FOUND" };
   },
 };

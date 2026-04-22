@@ -15,47 +15,31 @@ function makeFakeChild(closeDelayMs: number, exitCode = 0) {
 describe("sessionsSpawnTool", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("returns status=done when child closes before wait_ms (unwraps sessions envelope)", async () => {
+  it("returns status=done with exit_code when child closes before wait_ms", async () => {
     const child = makeFakeChild(10);
-    const detachedSpy = vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
-    // The handler generates a random sessionId and passes it to --session-id.
-    // Mock runOpenclawJson dynamically so the envelope row matches that id and
-    // we can assert last_message is surfaced end-to-end.
-    vi.mocked(cli.runOpenclawJson).mockImplementation(async () => {
-      const args = detachedSpy.mock.calls[0][0];
-      const sessionId = args[args.indexOf("--session-id") + 1];
-      return { sessions: [{ session_id: sessionId, status: "done", last_message: "SUB-PONG" }] };
-    });
+    vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
 
     const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500 });
     expect(result.status).toBe("done");
-    if (result.status === "done") {
-      expect(result.session_id).toMatch(/^[0-9a-f-]{36}$/);
-      expect("last_message" in result ? result.last_message : undefined).toBe("SUB-PONG");
-    } else {
-      throw new Error("expected done");
-    }
-    expect(cli.runOpenclawJson).toHaveBeenCalledWith(["sessions", "--all-agents", "--json"]);
+    if (result.status !== "done") throw new Error("expected done");
+    expect(result.session_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(result.exit_code).toBe(0);
+    expect(cli.runOpenclawJson).not.toHaveBeenCalled();
   });
 
   it("returns status=running when wait_ms elapses first", async () => {
-    const child = makeFakeChild(1000); // will not close in time
+    const child = makeFakeChild(1000);
     vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
 
     const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 50 });
     expect(result.status).toBe("running");
-    if (result.status === "running") {
-      expect(result.session_id).toBeTruthy();
-    } else {
-      throw new Error("expected running");
-    }
-    expect("last_message" in result ? (result as { last_message?: unknown }).last_message : undefined).toBeUndefined();
+    if (result.status !== "running") throw new Error("expected running");
+    expect(result.session_id).toBeTruthy();
   });
 
   it("passes --model when model override provided", async () => {
     const child = makeFakeChild(10);
     const detachedSpy = vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
-    vi.mocked(cli.runOpenclawJson).mockResolvedValue({ status: "done" });
 
     await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500, model: "google/gemini-2.5-flash" });
     const args = detachedSpy.mock.calls[0][0];
@@ -63,18 +47,12 @@ describe("sessionsSpawnTool", () => {
     expect(args[args.indexOf("--model") + 1]).toBe("google/gemini-2.5-flash");
   });
 
-  it("returns status=done with warning when session lookup fails after close", async () => {
-    const child = makeFakeChild(10);
+  it("surfaces non-zero exit codes in exit_code", async () => {
+    const child = makeFakeChild(10, 2);
     vi.mocked(cli.runOpenclawDetached).mockReturnValue(child as never);
-    vi.mocked(cli.runOpenclawJson).mockRejectedValue(new Error("boom"));
 
     const result = await sessionsSpawnTool.handler({ task: "ping", wait_ms: 500 });
-    expect(result.status).toBe("done");
-    if (result.status === "done" && "warning" in result) {
-      expect(result.warning).toMatch(/session lookup failed: boom/);
-    } else {
-      throw new Error("expected done+warning shape");
-    }
-    expect("last_message" in result ? (result as { last_message?: unknown }).last_message : undefined).toBeUndefined();
+    if (result.status !== "done") throw new Error("expected done");
+    expect(result.exit_code).toBe(2);
   });
 });
