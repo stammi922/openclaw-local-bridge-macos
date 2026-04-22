@@ -8,8 +8,21 @@ export interface Config {
   lcmDbPath: string;
 }
 
+function resolveStateDir(): string {
+  return process.env.OPENCLAW_STATE_DIR || join(process.env.HOME ?? "", ".openclaw");
+}
+
+/**
+ * Resolve the lcm.db path from state dir alone — does NOT require the
+ * gateway token. Used by read-only sqlite fallbacks where the CLI is
+ * unavailable (which is often exactly when the token is missing).
+ */
+export function resolveLcmDbPath(): string {
+  return join(resolveStateDir(), "lcm.db");
+}
+
 export function loadConfig(): Config {
-  const stateDir = process.env.OPENCLAW_STATE_DIR || join(process.env.HOME ?? "", ".openclaw");
+  const stateDir = resolveStateDir();
   const gatewayTokenPath = join(stateDir, "gateway-token");
   if (!existsSync(gatewayTokenPath)) {
     throw new Error(`gateway token not found at ${gatewayTokenPath}; is OpenClaw running?`);

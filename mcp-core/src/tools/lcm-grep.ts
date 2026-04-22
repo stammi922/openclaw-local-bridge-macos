@@ -1,7 +1,7 @@
 import { z } from "zod";
 import Database from "better-sqlite3";
 import { runOpenclawJson } from "../cli-wrapper.js";
-import { loadConfig } from "../config.js";
+import { resolveLcmDbPath } from "../config.js";
 
 const InputSchema = z.object({
   pattern: z.string().min(1),
@@ -10,6 +10,12 @@ const InputSchema = z.object({
 
 export type LcmGrepHit = { session_key: string; message_id: string; snippet: string };
 export type LcmGrepResult = LcmGrepHit[];
+
+// Escape SQL LIKE wildcards so the user's pattern is treated as a literal substring
+// rather than a LIKE pattern. Must be paired with `ESCAPE '\'` in the query.
+function escapeLike(pattern: string): string {
+  return pattern.replace(/[\\%_]/g, ch => `\\${ch}`);
+}
 
 async function viaCli(pattern: string, limit: number): Promise<LcmGrepResult> {
   const args = ["memory", "grep", "--pattern", pattern, "--json", "--limit", String(limit)];
@@ -22,9 +28,9 @@ function viaSqlite(pattern: string, limit: number, dbPath: string): LcmGrepResul
   try {
     const rows = db
       .prepare(
-        "SELECT session_key, message_id, content FROM messages WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?",
+        "SELECT session_key, message_id, content FROM messages WHERE content LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT ?",
       )
-      .all(`%${pattern}%`, limit) as Array<{ session_key: string; message_id: string; content: string }>;
+      .all(`%${escapeLike(pattern)}%`, limit) as Array<{ session_key: string; message_id: string; content: string }>;
     return rows.map(r => ({
       session_key: r.session_key,
       message_id: r.message_id,
@@ -66,8 +72,11 @@ export const lcmGrepTool = {
     } catch (cliErr) {
       const msg = cliErr instanceof Error ? cliErr.message : String(cliErr);
       process.stderr.write(`[lcm_grep] CLI failed (${msg.slice(0, 80)}); falling back to sqlite\n`);
-      const config = loadConfig();
-      return viaSqlite(pattern, limit, config.lcmDbPath);
+      // Deliberately avoid loadConfig() here: it requires a gateway token, and
+      // the fallback exists precisely to cover cases where the CLI is unhealthy
+      // (which is often when the token is absent). resolveLcmDbPath needs only
+      // the state dir.
+      return viaSqlite(pattern, limit, resolveLcmDbPath());
     }
   },
 };
