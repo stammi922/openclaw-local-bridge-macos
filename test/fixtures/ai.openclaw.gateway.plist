@@ -14,8 +14,6 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>WorkingDirectory</key>
-    <string>/tmp</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>HOME</key>

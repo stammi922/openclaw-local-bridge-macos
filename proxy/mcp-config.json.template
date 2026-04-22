@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "openclaw": {
+      "command": "openclaw",
+      "args": ["mcp", "serve"],
+      "env": {
+        "OPENCLAW_GATEWAY_TOKEN_FILE": "__HOME__/.openclaw/gateway-token"
+      }
+    },
+    "openclaw-core": {
+      "command": "openclaw-core-mcp",
+      "args": [],
+      "env": {
+        "OPENCLAW_STATE_DIR": "__HOME__/.openclaw"
+      }
+    }
+  }
+}

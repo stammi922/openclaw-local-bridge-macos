@@ -66,7 +66,7 @@ done
 
 # ---------- Steps ----------------------------------------------------------
 
-TOTAL=11
+TOTAL=12
 
 step 1 $TOTAL "Preflight checks"
 require_macos
@@ -194,14 +194,33 @@ else
   ok "Wrote $PROXY_PLIST"
 
   UID_=$(id -u)
-  launchctl bootout "gui/$UID_/ai.claude-max-api-proxy" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID_" "$PROXY_PLIST"
+
+  # launchctl bootout returns 0 before the service has fully torn down, so a
+  # subsequent bootstrap races the kernel and can fail with "Bootstrap failed:
+  # 5: Input/output error". Wait for the label to leave `launchctl list`, then
+  # retry bootstrap a few times for good measure. Keeps the happy path fast
+  # (bootstrap usually succeeds on first try) without a fixed sleep.
+  launchd_reload() {
+    local label="$1" plist="$2"
+    launchctl bootout "gui/$UID_/$label" 2>/dev/null || true
+    local i=0
+    while (( i < 20 )) && launchctl list | awk '{print $3}' | grep -qx "$label"; do
+      sleep 0.1; i=$((i+1))
+    done
+    i=0
+    while (( i < 10 )); do
+      if launchctl bootstrap "gui/$UID_" "$plist" 2>/dev/null; then return 0; fi
+      sleep 0.2; i=$((i+1))
+    done
+    launchctl bootstrap "gui/$UID_" "$plist"
+  }
+
+  launchd_reload "ai.claude-max-api-proxy" "$PROXY_PLIST"
   launchctl kickstart -k "gui/$UID_/ai.claude-max-api-proxy" || true
   ok "Loaded ai.claude-max-api-proxy"
 
   if [[ -f "$GATEWAY_PLIST" ]]; then
-    launchctl bootout "gui/$UID_/ai.openclaw.gateway" 2>/dev/null || true
-    launchctl bootstrap "gui/$UID_" "$GATEWAY_PLIST"
+    launchd_reload "ai.openclaw.gateway" "$GATEWAY_PLIST"
     ok "Reloaded ai.openclaw.gateway with new env"
   fi
 fi
@@ -266,6 +285,45 @@ else
   PORT="$PORT" "$REPO_ROOT/verify.sh" || warn "verify reported failures — check the table above."
 fi
 
+step 12 $TOTAL "Install MCP bridge binaries (openclaw-core-mcp, openclaw-watch)"
+if (( DRY_RUN )); then
+  dim "  would: (cd $REPO_ROOT && npm install --workspaces --include-workspace-root --no-audit --no-fund)"
+  dim "  would: npm run build -w mcp-core && npm run build -w watch-cli"
+  dim "  would: (cd $REPO_ROOT/mcp-core  && npm link)"
+  dim "  would: (cd $REPO_ROOT/watch-cli && npm link)"
+  dim "  would: verify openclaw-core-mcp and openclaw-watch on PATH"
+  dim "  would: backup existing $HOME/.openclaw/mcp-config.json (if present)"
+  dim "  would render: $HOME/.openclaw/mcp-config.json (from proxy/mcp-config.json.template)"
+else
+  (cd "$REPO_ROOT" && npm install --workspaces --include-workspace-root --no-audit --no-fund)
+  (cd "$REPO_ROOT" && npm run build -w mcp-core && npm run build -w watch-cli)
+
+  link_status=0
+  (cd "$REPO_ROOT/mcp-core"  && npm link) || link_status=$?
+  if (( link_status != 0 )); then
+    warn "npm link for mcp-core exited with status $link_status — continuing."
+  fi
+  link_status=0
+  (cd "$REPO_ROOT/watch-cli" && npm link) || link_status=$?
+  if (( link_status != 0 )); then
+    warn "npm link for watch-cli exited with status $link_status — continuing."
+  fi
+
+  if ! command -v openclaw-core-mcp >/dev/null || ! command -v openclaw-watch >/dev/null; then
+    warn "openclaw-core-mcp and/or openclaw-watch not found on PATH."
+    warn "  Check 'npm config get prefix' and ensure its bin dir is on your PATH."
+  fi
+
+  if [[ -n "${BRIDGE_BACKUP_DIR:-}" ]]; then
+    backup_file "$HOME/.openclaw/mcp-config.json" "mcp-config.json"
+  fi
+
+  mkdir -p "$HOME/.openclaw"
+  sed "s#__HOME__#${HOME}#g" "$REPO_ROOT/proxy/mcp-config.json.template" > "$HOME/.openclaw/mcp-config.json"
+  chmod 600 "$HOME/.openclaw/mcp-config.json"
+  ok "Wrote $HOME/.openclaw/mcp-config.json"
+fi
+
 cat <<EOF
 
 $( ((DRY_RUN)) && echo "DRY-RUN complete. Re-run without --dry-run to apply." || echo "Done." )
@@ -273,6 +331,8 @@ $( ((DRY_RUN)) && echo "DRY-RUN complete. Re-run without --dry-run to apply." ||
 Next steps:
   - Tail logs:     tail -f ~/.openclaw/logs/claude-max-api-proxy.{log,err.log}
   - Test agent:    openclaw agent 'say hi in five words' --agent claude-code
+  - MCP client cfg: $HOME/.openclaw/mcp-config.json
+  - Tail events:    openclaw-watch
   - Uninstall:     ./uninstall.sh
 
 EOF

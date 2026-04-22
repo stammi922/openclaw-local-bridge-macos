@@ -120,10 +120,16 @@ echo
 # ---------------------------------------------------------------------------
 echo "[3/4] patch-gateway-plist.mjs"
 cp "$FIXTURES/ai.openclaw.gateway.plist" "$TMP/gateway.plist"
-node "$REPO/scripts/patch-gateway-plist.mjs" "$TMP/gateway.plist" >/dev/null
+HOME="/tmp/fakehome" node "$REPO/scripts/patch-gateway-plist.mjs" "$TMP/gateway.plist" >/dev/null
 
 current="$(plutil -extract EnvironmentVariables.CLAUDE_CODE_ENTRYPOINT raw "$TMP/gateway.plist" 2>/dev/null || echo '<missing>')"
 assert_eq "gateway: CLAUDE_CODE_ENTRYPOINT=cli" "cli" "$current"
+
+# WorkingDirectory=$HOME keeps the daemon off cwd=/. openclaw's `openclaw.json`
+# uses a relative `agentDir`, which resolves to /agents/main under launchd
+# without this key and blows up with ENOENT on every agent turn.
+wd_val="$(plutil -extract WorkingDirectory raw "$TMP/gateway.plist" 2>/dev/null || echo '<missing>')"
+assert_eq "gateway: WorkingDirectory set to caller HOME" "/tmp/fakehome" "$wd_val"
 
 # Preserve other keys.
 home_val="$(plutil -extract EnvironmentVariables.HOME raw "$TMP/gateway.plist" 2>/dev/null || echo '<missing>')"
@@ -131,9 +137,11 @@ assert_eq "gateway: HOME preserved" "/tmp" "$home_val"
 
 # Idempotency: a byte-for-byte second run should produce no change on disk
 # (plutil may re-pretty-print, but the key=value we care about is unchanged).
-node "$REPO/scripts/patch-gateway-plist.mjs" "$TMP/gateway.plist" >/dev/null
+HOME="/tmp/fakehome" node "$REPO/scripts/patch-gateway-plist.mjs" "$TMP/gateway.plist" >/dev/null
 current2="$(plutil -extract EnvironmentVariables.CLAUDE_CODE_ENTRYPOINT raw "$TMP/gateway.plist" 2>/dev/null)"
 assert_eq "gateway: idempotent value still cli" "cli" "$current2"
+wd_val2="$(plutil -extract WorkingDirectory raw "$TMP/gateway.plist" 2>/dev/null)"
+assert_eq "gateway: idempotent WorkingDirectory unchanged" "/tmp/fakehome" "$wd_val2"
 
 # Missing-file behavior: should exit 0 and print a friendly message.
 if node "$REPO/scripts/patch-gateway-plist.mjs" "$TMP/definitely-does-not-exist.plist" >/dev/null 2>&1; then

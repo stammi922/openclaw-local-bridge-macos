@@ -159,6 +159,34 @@ flows back. Everything runs on `localhost`. No tokens leave your machine.
 
 ---
 
+## MCP bridge tools
+
+The installer's step 12 also builds and links two MCP-related binaries from
+this repo's workspaces:
+
+| Binary | From | Purpose |
+|---|---|---|
+| `openclaw-core-mcp` | `mcp-core/` | stdio MCP server exposing 9 openclaw tools (`sessions_spawn`, `sessions_list`, `sessions_send`, `session_status`, `sessions_yield`, `memory_search`, `lcm_grep`, `cron_list`, `agents_list`) for direct use by MCP clients |
+| `openclaw-watch` | `watch-cli/` | live terminal viewer that tails `openclaw logs --follow --json` and prints per-session events |
+
+The installer renders `~/.openclaw/mcp-config.json` from
+`proxy/mcp-config.json.template`. Point any MCP-capable client at it to get
+both the stock `openclaw` channel bridge (`openclaw mcp serve`) and the
+custom `openclaw-core` tool surface in one config.
+
+```bash
+# live tail of subagent activity, in a second terminal
+openclaw-watch
+
+# or machine-readable NDJSON for piping into jq / your own tooling
+openclaw-watch --json | jq .
+```
+
+`uninstall.sh` step 5 symmetrically `npm unlink`s both binaries and removes
+the rendered `mcp-config.json` (unless it was just restored from a backup).
+
+---
+
 ## Troubleshooting
 
 **`EACCES` during install** — npm is trying to write to a global directory
@@ -179,6 +207,41 @@ plist's environment.
 **`openclaw config validate` fails after install** — restore the most recent
 backup from `~/.openclaw/bridge-backups/` and file an issue. The patcher
 runs validate before declaring success, so this should be rare.
+
+**Main agent replies `sessions_spawn is not available in my toolset`** —
+the `claude` CLI didn't load the MCP servers. Check, in this order:
+1. `launchctl getenv OPENCLAW_MCP_CONFIG` prints a path (if empty, the
+   install didn't patch the plist; rerun `./install.sh`).
+2. `cat ~/.openclaw/mcp-config.json` references both `openclaw-core-mcp`
+   and `openclaw` binaries that exist on PATH (`which openclaw-core-mcp`).
+3. `~/.openclaw/logs/claude-max-api-proxy.err.log` records `[Subprocess]
+   Process spawned with PID: …` each turn. If there is no activity
+   after an agent call, the proxy isn't reaching the `claude` CLI at
+   all. If activity is present but the main still sees no MCP tools,
+   the proxy is running pre-patch code — restart it with
+   `launchctl kickstart -k gui/$UID/ai.claude-max-api-proxy`.
+
+**`Gateway agent failed … ENOENT mkdir '/agents'`** — OpenClaw's gateway
+daemon runs under launchd with `cwd=/`, and `openclaw.json` resolves
+`"agentDir": "./agents/main"` relative to that, so it tries to create
+`/agents`. `./install.sh` step 8 already injects
+`<key>WorkingDirectory</key><string>$HOME</string>` into the gateway
+plist to keep the daemon off `cwd=/`. **However**, `openclaw update`
+re-renders that plist from its own template (which still omits the
+key), so after every upstream update re-run `./install.sh` to restore
+the patch and reload the gateway.
+
+**Subagent turn times out with `LLM request timed out`** — OpenClaw's
+per-assistant-turn HTTP client has a ~180s–256s timeout, but a nested
+`sessions_spawn` that polls the subagent can legitimately run longer
+because the subagent itself is another `openclaw agent` subprocess
+driving a full `claude --print` turn. The bridge plumbing is working
+(confirm with `~/.openclaw/logs/claude-max-api-proxy.err.log` showing
+steady "Received N bytes of stdout" lines); the limit is in the
+model-router on OpenClaw's side.
+Workarounds: call `sessions_spawn` with a large explicit `wait_ms` so
+the tool returns `done` in a single round-trip, or structure the task
+so the subagent finishes in one fast turn.
 
 ---
 

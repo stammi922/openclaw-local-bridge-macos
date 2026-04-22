@@ -1,0 +1,23 @@
+{
+  "name": "@stammi922/openclaw-core-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "openclaw-core-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "vitest run",
+    "test:unit": "vitest run src/**/*.unit.test.ts",
+    "test:integ": "vitest run src/**/*.integ.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "@types/better-sqlite3": "^7.6.0"
+  }
+}
