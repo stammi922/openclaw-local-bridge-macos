@@ -32,6 +32,27 @@ describe("runOpenclawJson", () => {
     );
     await expect(runOpenclawJson(["bogus"])).rejects.toThrow(/openclaw bogus failed.*boom on stderr/);
   });
+
+  it("throws when stdout is empty", async () => {
+    vi.spyOn(childProcess, "execFile").mockImplementation(
+      ((_cmd, _args, _opts, cb) => {
+        (cb as any)(null, "", "");
+        return {} as any;
+      }) as any,
+    );
+    await expect(runOpenclawJson(["sessions", "list", "--json"])).rejects.toThrow(/empty stdout.*expected JSON/);
+  });
+
+  it("throws when stdout is not valid JSON, preserving first 200 chars", async () => {
+    const garbage = "not json: " + "x".repeat(300);
+    vi.spyOn(childProcess, "execFile").mockImplementation(
+      ((_cmd, _args, _opts, cb) => {
+        (cb as any)(null, garbage, "");
+        return {} as any;
+      }) as any,
+    );
+    await expect(runOpenclawJson(["weird"])).rejects.toThrow(/returned non-JSON stdout: not json: x+/);
+  });
 });
 
 describe("runOpenclawDetached", () => {

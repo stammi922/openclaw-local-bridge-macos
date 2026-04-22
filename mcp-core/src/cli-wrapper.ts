@@ -12,8 +12,18 @@ export async function runOpenclawRaw(args: string[], opts: { timeoutMs?: number 
       { timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, maxBuffer: MAX_BUFFER, env: process.env },
       (err, stdout, stderr) => {
         if (err) {
+          const nodeErr = err as NodeJS.ErrnoException & { killed?: boolean; signal?: NodeJS.Signals | null };
           const tail = (stderr || "").trim().split("\n").slice(-5).join(" | ");
-          reject(new Error(`openclaw ${args.join(" ")} failed: ${tail || err.message}`));
+          const timedOut = nodeErr.killed === true && nodeErr.signal === "SIGTERM";
+          const prefix = timedOut ? "timed out" : "failed";
+          const wrapped = new Error(
+            `openclaw ${args.join(" ")} ${prefix}: ${tail || err.message}`,
+            { cause: err },
+          );
+          (wrapped as Error & { exitCode?: number; timedOut?: boolean }).exitCode =
+            typeof nodeErr.code === "number" ? nodeErr.code : undefined;
+          (wrapped as Error & { exitCode?: number; timedOut?: boolean }).timedOut = timedOut;
+          reject(wrapped);
         } else {
           resolve(stdout);
         }
@@ -25,11 +35,13 @@ export async function runOpenclawRaw(args: string[], opts: { timeoutMs?: number 
 export async function runOpenclawJson<T = unknown>(args: string[], opts: { timeoutMs?: number } = {}): Promise<T> {
   const stdout = await runOpenclawRaw(args, opts);
   const trimmed = stdout.trim();
-  if (!trimmed) return {} as T;
+  if (!trimmed) {
+    throw new Error(`openclaw ${args.join(" ")} returned empty stdout; expected JSON`);
+  }
   try {
     return JSON.parse(trimmed) as T;
   } catch (parseErr) {
-    throw new Error(`openclaw ${args.join(" ")} returned non-JSON stdout: ${trimmed.slice(0, 200)}`);
+    throw new Error(`openclaw ${args.join(" ")} returned non-JSON stdout: ${trimmed.slice(0, 200)}`, { cause: parseErr });
   }
 }
 
