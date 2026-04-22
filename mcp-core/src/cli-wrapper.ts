@@ -46,7 +46,13 @@ export async function runOpenclawJson<T = unknown>(args: string[], opts: { timeo
 }
 
 export function runOpenclawDetached(args: string[]): ChildProcess {
-  const child = spawn(OPENCLAW_BIN, args, { detached: true, stdio: "ignore", env: process.env });
+  // openclaw.json uses `"agentDir": "./agents/main"` — a relative path that
+  // resolves against cwd. When we inherit cwd from launchd (which defaults
+  // to "/"), openclaw tries to mkdir '/agents' and dies with ENOENT. Anchor
+  // the child at HOME so `./agents/main` resolves to the canonical
+  // ~/.openclaw/agents/main directory that the real openclaw state lives in.
+  const cwd = process.env.HOME || undefined;
+  const child = spawn(OPENCLAW_BIN, args, { detached: true, stdio: "ignore", env: process.env, cwd });
   child.unref();
   return child;
 }

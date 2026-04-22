@@ -68,4 +68,22 @@ describe("runOpenclawDetached", () => {
     expect(fakeChild.unref).toHaveBeenCalled();
     expect(child.pid).toBe(1234);
   });
+
+  it("anchors cwd at $HOME so openclaw's relative state paths resolve", () => {
+    const fakeChild = { unref: vi.fn(), on: vi.fn(), pid: 1 };
+    const spawnSpy = vi.spyOn(childProcess, "spawn").mockReturnValue(fakeChild as any);
+    const origHome = process.env.HOME;
+    process.env.HOME = "/Users/fakeuser";
+    try {
+      runOpenclawDetached(["agent", "--message", "hi"]);
+      expect(spawnSpy).toHaveBeenCalledWith(
+        "openclaw",
+        expect.anything(),
+        expect.objectContaining({ cwd: "/Users/fakeuser" }),
+      );
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+    }
+  });
 });
