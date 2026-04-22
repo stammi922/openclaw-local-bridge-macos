@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { sessionsSpawnTool } from "./tools/sessions-spawn.js";
 import { sessionStatusTool } from "./tools/session-status.js";
 import { sessionsListTool } from "./tools/sessions-list.js";
+import { sessionsSendTool } from "./tools/sessions-send.js";
 
 async function main() {
   const config = loadConfig();
@@ -22,6 +23,7 @@ async function main() {
     [sessionsSpawnTool.definition.name]: sessionsSpawnTool,
     [sessionStatusTool.definition.name]: sessionStatusTool,
     [sessionsListTool.definition.name]: sessionsListTool,
+    [sessionsSendTool.definition.name]: sessionsSendTool,
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
