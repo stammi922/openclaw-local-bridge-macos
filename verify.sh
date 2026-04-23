@@ -83,6 +83,62 @@ if (( SMOKE )); then
   fi
 fi
 
+echo ""
+echo "── rotator checks ───────────────────────────────────────────"
+
+PROXY_DIR="$HOME/.openclaw/bridge/claude-max-api-proxy"
+ROUTES="$PROXY_DIR/dist/server/routes.js"
+MANAGER="$PROXY_DIR/dist/subprocess/manager.js"
+ADAPTER="$PROXY_DIR/dist/adapter/openai-to-cli.js"
+
+check_sentinel() {
+  local file="$1" sentinel="$2" label="$3"
+  if [[ -f "$file" ]] && grep -q "$sentinel" "$file"; then
+    echo "  ✓ $label sentinel present"
+  else
+    echo "  ✗ $label sentinel missing in $file"
+  fi
+}
+
+check_sentinel "$ADAPTER" "@openclaw-bridge:extractContent v1" "extractContent"
+check_sentinel "$MANAGER" "@openclaw-bridge:idleTimeout v1"     "idleTimeout"
+check_sentinel "$ROUTES"  "@openclaw-bridge:rotator v1"         "rotator (routes.js)"
+check_sentinel "$MANAGER" "@openclaw-bridge:rotator v1"         "rotator (manager.js)"
+
+if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
+  echo "  ✓ rotator modules staged in proxy tree"
+else
+  echo "  ✗ rotator modules missing at $PROXY_DIR/dist/rotator/"
+fi
+
+ACCOUNTS_JSON="$HOME/.openclaw/bridge/accounts.json"
+if [[ -f "$ACCOUNTS_JSON" ]]; then
+  if python3 -c "import json; json.load(open('$ACCOUNTS_JSON'))" >/dev/null 2>&1 \
+     || node -e "JSON.parse(require('fs').readFileSync('$ACCOUNTS_JSON','utf8'))" 2>/dev/null; then
+    echo "  ✓ accounts.json parses"
+  else
+    echo "  ✗ accounts.json malformed"
+  fi
+  MODE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$ACCOUNTS_JSON','utf8')).mode)" 2>/dev/null || echo "unknown")
+  echo "  ℹ mode: $MODE"
+  if [[ "$MODE" == "multi" ]]; then
+    N=$(node -e "console.log((JSON.parse(require('fs').readFileSync('$ACCOUNTS_JSON','utf8')).accounts||[]).length)")
+    if [[ "$N" -ge 1 ]]; then
+      echo "  ✓ $N account(s) registered"
+    else
+      echo "  ✗ mode=multi but no accounts registered"
+    fi
+  fi
+else
+  echo "  ℹ accounts.json absent (clean install — OK)"
+fi
+
+if command -v openclaw-bridge >/dev/null 2>&1; then
+  openclaw-bridge status >/dev/null 2>&1 && echo "  ✓ openclaw-bridge status runs" || echo "  ✗ openclaw-bridge status failed"
+else
+  echo "  ✗ openclaw-bridge CLI not on PATH"
+fi
+
 # Print table
 echo
 echo "Verify results (port $PORT):"
