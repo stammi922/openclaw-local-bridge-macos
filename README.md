@@ -42,6 +42,19 @@ under `vendor/` so install works without touching the npm registry.
 
 ---
 
+## ⚠ Optional: multi-account rotator (higher-risk)
+
+This installer includes an OPTIONAL pool-multiple-Claude-Max-accounts rotator.
+It is OFF by default — a fresh install behaves exactly like single-account.
+
+Enabling it is ToS-risky: Anthropic may treat pooled rotation as abuse and can
+**simultaneously terminate every account** in the pool if one is flagged.
+
+See [docs/MULTI_ACCOUNT.md](docs/MULTI_ACCOUNT.md) for setup, operations,
+risk details, and the auto-recovering auth-cascade circuit breaker.
+
+---
+
 ## What this does
 
 When you run `./install.sh`:
