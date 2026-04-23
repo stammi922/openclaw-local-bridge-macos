@@ -52,7 +52,12 @@ function buildArgsImpl(prompt, options) {
 export function buildArgs(prompt, options) {
     return buildArgsImpl(prompt, options);
 }
-const DEFAULT_TIMEOUT = 300000; // 5 minutes
+// @openclaw-bridge:idleTimeout v1
+// Idle timeout: the timer resets on every stdout/stderr chunk, so long-running
+// prompts whose subprocess keeps emitting stream-json tokens never hit the wall.
+// Only fires when the subprocess has produced no output for the configured window.
+// Override via env OPENCLAW_PROXY_IDLE_TIMEOUT_MS (default 300000 = 5 min).
+const DEFAULT_TIMEOUT = Number.parseInt(process.env.OPENCLAW_PROXY_IDLE_TIMEOUT_MS || "", 10) || 300000;
 export class ClaudeSubprocess extends EventEmitter {
     process = null;
     buffer = "";
@@ -72,14 +77,19 @@ export class ClaudeSubprocess extends EventEmitter {
                     env: { ...process.env },
                     stdio: ["pipe", "pipe", "pipe"],
                 });
-                // Set timeout
-                this.timeoutId = setTimeout(() => {
-                    if (!this.isKilled) {
-                        this.isKilled = true;
-                        this.process?.kill("SIGTERM");
-                        this.emit("error", new Error(`Request timed out after ${timeout}ms`));
-                    }
-                }, timeout);
+                // Arm idle timer — kills subprocess only if no stdout/stderr seen for `timeout` ms.
+                // Reset below inside the stdout/stderr data handlers on every chunk.
+                const armIdleTimeout = () => {
+                    if (this.timeoutId) clearTimeout(this.timeoutId);
+                    this.timeoutId = setTimeout(() => {
+                        if (!this.isKilled) {
+                            this.isKilled = true;
+                            this.process?.kill("SIGTERM");
+                            this.emit("error", new Error(`Subprocess idle (no output) for ${timeout}ms`));
+                        }
+                    }, timeout);
+                };
+                armIdleTimeout();
                 // Handle spawn errors (e.g., claude not found)
                 this.process.on("error", (err) => {
                     this.clearTimeout();
@@ -95,6 +105,7 @@ export class ClaudeSubprocess extends EventEmitter {
                 console.error(`[Subprocess] Process spawned with PID: ${this.process.pid}`);
                 // Parse JSON stream from stdout
                 this.process.stdout?.on("data", (chunk) => {
+                    armIdleTimeout();
                     const data = chunk.toString();
                     console.error(`[Subprocess] Received ${data.length} bytes of stdout`);
                     this.buffer += data;
@@ -102,6 +113,7 @@ export class ClaudeSubprocess extends EventEmitter {
                 });
                 // Capture stderr for debugging
                 this.process.stderr?.on("data", (chunk) => {
+                    armIdleTimeout();
                     const errorText = chunk.toString().trim();
                     if (errorText) {
                         // Don't emit as error unless it's actually an error
