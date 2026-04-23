@@ -7,6 +7,37 @@ import { classifyOutcome, DEFAULT_PATTERNS } from "./detector.js";
 import { classifyRequest } from "./classify.js";
 import { log } from "./logger.js";
 
+const CIRCUIT = {
+  authWindowMs: 24 * 60 * 60 * 1000,
+  firstProbeDelayMs: 60 * 60 * 1000,        // T+1h
+  subsequentProbeIntervalMs: 24 * 60 * 60 * 1000,
+  maxProbeAttempts: 7,
+};
+
+let _nowFn = () => Date.now();
+export function _setNowForTests(fn) { _nowFn = fn; }
+
+async function defaultProbeExecutor(label, configDir) {
+  const { spawn } = await import("node:child_process");
+  return new Promise((resolve) => {
+    let stderrTail = "";
+    const p = spawn("claude", ["-p", "pong", "--output-format", "json", "--max-turns", "1"], {
+      env: { ...process.env, CLAUDE_CONFIG_DIR: configDir },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    p.stderr?.on("data", (chunk) => {
+      stderrTail = (stderrTail + chunk.toString()).slice(-4096);
+    });
+    p.on("close", (code) => {
+      resolve(classifyOutcome(code, stderrTail));
+    });
+    p.on("error", () => resolve("other"));
+  });
+}
+
+let _probeExecutor = defaultProbeExecutor;
+export function _setProbeExecutorForTests(fn) { _probeExecutor = fn; }
+
 const DEFAULT_COOLDOWNS = { rate_limit: 60, usage_limit: 5 * 60 * 60, auth: -1, other: 30 };
 const DEFAULT_HEARTBEAT_MODELS = ["claude-haiku-4", "claude-haiku-4-20250514"];
 
@@ -67,6 +98,23 @@ function evaluatePoolQuiet(state) {
       log({ event: "pool_quiet_activated", trigger: outcome, durationMs: duration, distinctAccounts: [...distinct] });
       return;
     }
+  }
+}
+
+function evaluateCircuitBreaker(state) {
+  const now = _nowFn();
+  const recent = state.recentOutcomes || [];
+  const inWindow = recent.filter(e => e.outcome === "auth" && (now - e.at) <= CIRCUIT.authWindowMs);
+  const distinct = new Set(inWindow.map(e => e.label));
+  if (distinct.size >= 2 && !state.circuitTrippedAt) {
+    state.circuitTrippedAt = now;
+    state.nextProbeAt = now + CIRCUIT.firstProbeDelayMs;
+    state.probeAttempts = 0;
+    log({
+      event: "circuit_tripped",
+      auth_cooled: [...distinct],
+      trippedAt: new Date(now).toISOString(),
+    });
   }
 }
 
@@ -135,6 +183,7 @@ export async function complete(ctx, { exitCode, stderrTail } = {}) {
       { at: Date.now(), label: ctx.label, outcome },
     ];
     evaluatePoolQuiet(state);
+    evaluateCircuitBreaker(state);
     saveState(state);
     log({ event: "completed", label: ctx.label, kind: ctx.kind, outcome, exitCode: exitCode ?? null });
     return outcome;
@@ -149,6 +198,84 @@ export function snapshot() {
 
 export function refresh() {
   _resetCachesForTests();
+}
+
+export async function probeOnce() {
+  const state = loadState();
+  if (!state.circuitTrippedAt) {
+    return { cleared: false, reason: "not_tripped" };
+  }
+  const cfg = loadConfig();
+  const registry = loadRegistry();
+
+  const coolLabels = Object.entries(state.accounts)
+    .filter(([_, a]) => a.cooling_until === Number.MAX_SAFE_INTEGER)
+    .map(([label]) => label);
+
+  const results = {};
+  for (const label of coolLabels) {
+    const acc = registry.accounts.find(a => a.label === label);
+    if (!acc) { results[label] = "other"; continue; }
+    try {
+      results[label] = await _probeExecutor(label, acc.configDir);
+    } catch {
+      results[label] = "other";
+    }
+  }
+
+  log({ event: "circuit_probe_ran", attempt: (state.probeAttempts || 0) + 1, results });
+
+  const allOk = coolLabels.length > 0 && coolLabels.every(l => results[l] === "ok");
+  if (allOk) {
+    const s2 = loadState();
+    s2.circuitTrippedAt = null;
+    s2.nextProbeAt = null;
+    s2.probeAttempts = 0;
+    // Clear indefinite cooldown on previously-auth-cooled accounts
+    for (const label of coolLabels) {
+      if (s2.accounts[label]) s2.accounts[label].cooling_until = 0;
+    }
+    saveState(s2);
+    log({ event: "circuit_auto_cleared", attempt: (state.probeAttempts || 0) + 1, clearedAt: new Date().toISOString() });
+    return { cleared: true, attempts: state.probeAttempts + 1 };
+  }
+
+  // Re-arm or exhaust
+  const s2 = loadState();
+  s2.probeAttempts = (s2.probeAttempts || 0) + 1;
+  if (s2.probeAttempts >= CIRCUIT.maxProbeAttempts) {
+    s2.nextProbeAt = null;
+    saveState(s2);
+    log({ event: "circuit_probe_exhausted", attempts: s2.probeAttempts, escalated: true });
+    return { cleared: false, exhausted: true, attempts: s2.probeAttempts };
+  }
+  s2.nextProbeAt = _nowFn() + CIRCUIT.subsequentProbeIntervalMs;
+  saveState(s2);
+  log({
+    event: "circuit_probe_failed",
+    attempt: s2.probeAttempts,
+    stillFailing: coolLabels.filter(l => results[l] !== "ok"),
+    nextProbeAt: new Date(s2.nextProbeAt).toISOString(),
+  });
+  return { cleared: false, attempts: s2.probeAttempts };
+}
+
+let _probeTimer = null;
+export function scheduleProbeTimer() {
+  if (_probeTimer) { clearTimeout(_probeTimer); _probeTimer = null; }
+  const cfg = loadConfig();
+  if (!cfg.autoClearCircuit) return; // operator opted out
+  const state = loadState();
+  if (!state.circuitTrippedAt || !state.nextProbeAt) return;
+
+  const delay = Math.max(0, state.nextProbeAt - _nowFn());
+  const MAX_TIMER = 2 ** 31 - 1; // setTimeout max
+  const armed = Math.min(delay, MAX_TIMER);
+  _probeTimer = setTimeout(async () => {
+    try { await probeOnce(); } catch {}
+    scheduleProbeTimer();
+  }, armed);
+  log({ event: "circuit_probe_scheduled", nextProbeAt: new Date(state.nextProbeAt).toISOString(), probeAttempts: state.probeAttempts || 0 });
 }
 
 export const _internals = { loadConfig };
