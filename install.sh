@@ -28,6 +28,7 @@ DRY_RUN=0
 SKIP_VERIFY=0
 FORCE=0
 WITH_CLAUDE_PERMS="prompt"   # prompt | yes | no
+ENABLE_MULTI_ACCOUNT=0
 
 usage() {
   cat <<EOF
@@ -42,6 +43,7 @@ Flags:
   --skip-verify                  Don't run verify.sh after installing
   --force                        Continue past soft warnings
   --uninstall                    Delegate to ./uninstall.sh
+  --enable-multi-account         Print risk notice for multi-account rotator (heavy-user opt-in)
   -h, --help                     Show this help
 EOF
 }
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --with-claude-permissions)  WITH_CLAUDE_PERMS="yes"; shift ;;
     --no-claude-permissions)    WITH_CLAUDE_PERMS="no"; shift ;;
     --uninstall)                exec "$REPO_ROOT/uninstall.sh" ;;
+    --enable-multi-account)     ENABLE_MULTI_ACCOUNT=1; shift ;;
     -h|--help)                  usage; exit 0 ;;
     *) err "Unknown flag: $1"; usage; exit 2 ;;
   esac
@@ -66,7 +69,7 @@ done
 
 # ---------- Steps ----------------------------------------------------------
 
-TOTAL=12
+TOTAL=14
 
 step 1 $TOTAL "Preflight checks"
 require_macos
@@ -161,6 +164,28 @@ fi
 
 step 6 $TOTAL "Patch proxy adapter"
 node "$REPO_ROOT/scripts/patch-adapter.mjs" "$PROXY_HOME/dist/adapter/openai-to-cli.js" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
+
+step 13 $TOTAL "Patch proxy to install rotator"
+node "$REPO_ROOT/scripts/patch-proxy-rotator.mjs" "$PROXY_HOME" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
+
+step 14 $TOTAL "Scaffold rotator bridge state and link CLI"
+BRIDGE_DIR="$HOME/.openclaw/bridge"
+if (( ! DRY_RUN )); then
+  mkdir -p "$BRIDGE_DIR"
+  if [[ ! -f "$BRIDGE_DIR/accounts.json" ]]; then
+    cp "$REPO_ROOT/templates/accounts.json.tmpl" "$BRIDGE_DIR/accounts.json"
+    info "Created $BRIDGE_DIR/accounts.json (mode=single)"
+  else
+    info "Kept existing $BRIDGE_DIR/accounts.json"
+  fi
+fi
+
+NPM_BIN="$(npm prefix -g)/bin"
+if (( ! DRY_RUN )); then
+  mkdir -p "$NPM_BIN"
+  ln -sf "$REPO_ROOT/cli/openclaw-bridge" "$NPM_BIN/openclaw-bridge"
+  info "Linked openclaw-bridge → $NPM_BIN/openclaw-bridge"
+fi
 
 step 7 $TOTAL "Patch ~/.openclaw/openclaw.json"
 node "$REPO_ROOT/scripts/patch-openclaw-config.mjs" "$HOME/.openclaw/openclaw.json" "$PORT" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
@@ -322,6 +347,29 @@ else
   sed "s#__HOME__#${HOME}#g" "$REPO_ROOT/proxy/mcp-config.json.template" > "$HOME/.openclaw/mcp-config.json"
   chmod 600 "$HOME/.openclaw/mcp-config.json"
   ok "Wrote $HOME/.openclaw/mcp-config.json"
+fi
+
+if (( ENABLE_MULTI_ACCOUNT == 1 )); then
+  cat <<'RISK'
+
+╔════════════════════════════════════════════════════════════════════╗
+║                    MULTI-ACCOUNT ROTATOR — RISK                    ║
+╠════════════════════════════════════════════════════════════════════╣
+║ Pooling multiple Claude Max accounts to avoid rate/usage limits    ║
+║ may be treated by Anthropic as abuse of the Services.              ║
+║ Detection can cause SIMULTANEOUS TERMINATION of every account.     ║
+║ See docs/MULTI_ACCOUNT.md for the full risk breakdown.             ║
+║ Use at your own risk.                                              ║
+╚════════════════════════════════════════════════════════════════════╝
+
+To continue, type exactly:  I accept the risk
+RISK
+  read -r ACK
+  if [[ "$ACK" != "I accept the risk" ]]; then
+    warn "Multi-account risk not acknowledged — rotator code is installed but mode stays 'single'."
+  else
+    info "Risk acknowledged. Rotator code installed. Next: openclaw-bridge accounts add <label>"
+  fi
 fi
 
 cat <<EOF
