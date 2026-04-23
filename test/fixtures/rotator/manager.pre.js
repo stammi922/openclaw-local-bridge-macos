@@ -1,4 +1,4 @@
-// Fixture: pre-patch manager.js (post-idleTimeout shape)
+// Fixture: pre-patch manager.js (matches live vendored proxy shape)
 export class ClaudeSubprocess {
     async start(prompt, options) {
         return new Promise((resolve, reject) => {
@@ -8,10 +8,7 @@ export class ClaudeSubprocess {
                     env: { ...process.env },
                     stdio: ["pipe", "pipe", "pipe"],
                 });
-                const armIdleTimeout = () => {};
-                armIdleTimeout();
                 this.process.stderr?.on("data", (chunk) => {
-                    armIdleTimeout();
                     const errorText = chunk.toString().trim();
                     if (errorText) {
                         // Don't emit as error unless it's actually an error
