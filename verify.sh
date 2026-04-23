@@ -13,7 +13,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SMOKE=0
 [[ "${1:-}" == "--smoke" ]] && SMOKE=1
-PORT="${PORT:-3456}"
+
+# Auto-detect the installed port from the loaded plist so standalone
+# invocations work after install.sh auto-selected a non-default port.
+# Explicit PORT= env still wins.
+detect_port() {
+  local plist="$HOME/Library/LaunchAgents/ai.claude-max-api-proxy.plist"
+  [[ -f "$plist" ]] || return 1
+  plutil -extract ProgramArguments.2 raw "$plist" 2>/dev/null
+}
+PORT="${PORT:-$(detect_port || echo 3456)}"
 UID_=$(id -u)
 
 FAILS=0
