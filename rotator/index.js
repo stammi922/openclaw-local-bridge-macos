@@ -37,6 +37,39 @@ function filterRegistryToValidDirs(registry) {
   };
 }
 
+const POOL_QUIET = {
+  rate_limit: { windowMs: 120 * 1000, baseDurationMs: 300 * 1000 },
+  usage_limit: { windowMs: 600 * 1000, baseDurationMs: 3600 * 1000 },
+  retriggerWithinMs: 30 * 60 * 1000,
+  maxDurationMs: 3600 * 1000,
+};
+
+function evaluatePoolQuiet(state) {
+  const now = Date.now();
+  const recent = state.recentOutcomes || [];
+
+  for (const outcome of ["rate_limit", "usage_limit"]) {
+    const { windowMs, baseDurationMs } = POOL_QUIET[outcome];
+    const inWindow = recent.filter(e => e.outcome === outcome && (now - e.at) <= windowMs);
+    const distinct = new Set(inWindow.map(e => e.label));
+    if (distinct.size >= 2) {
+      const last = state.poolQuietLastTriggeredAt || 0;
+      let duration = baseDurationMs;
+      if (last && (now - last) <= POOL_QUIET.retriggerWithinMs) {
+        // double last duration, cap
+        const lastDuration = (state.poolQuietUntil && state.poolQuietUntil > last)
+          ? (state.poolQuietUntil - last)
+          : baseDurationMs;
+        duration = Math.min(POOL_QUIET.maxDurationMs, lastDuration * 2);
+      }
+      state.poolQuietUntil = now + duration;
+      state.poolQuietLastTriggeredAt = now;
+      log({ event: "pool_quiet_activated", trigger: outcome, durationMs: duration, distinctAccounts: [...distinct] });
+      return;
+    }
+  }
+}
+
 export async function prepare(body) {
   let registry, state, cfg;
   try {
@@ -101,6 +134,7 @@ export async function complete(ctx, { exitCode, stderrTail } = {}) {
       ...(state.recentOutcomes || []).slice(-19),
       { at: Date.now(), label: ctx.label, outcome },
     ];
+    evaluatePoolQuiet(state);
     saveState(state);
     log({ event: "completed", label: ctx.label, kind: ctx.kind, outcome, exitCode: exitCode ?? null });
     return outcome;
