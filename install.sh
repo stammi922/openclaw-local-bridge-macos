@@ -165,10 +165,10 @@ fi
 step 6 $TOTAL "Patch proxy adapter"
 node "$REPO_ROOT/scripts/patch-adapter.mjs" "$PROXY_HOME/dist/adapter/openai-to-cli.js" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 13 $TOTAL "Patch proxy to install rotator"
+step 7 $TOTAL "Patch proxy to install rotator"
 node "$REPO_ROOT/scripts/patch-proxy-rotator.mjs" "$PROXY_HOME" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 14 $TOTAL "Scaffold rotator bridge state and link CLI"
+step 8 $TOTAL "Scaffold rotator bridge state and link CLI"
 BRIDGE_DIR="$HOME/.openclaw/bridge"
 if (( ! DRY_RUN )); then
   mkdir -p "$BRIDGE_DIR"
@@ -187,7 +187,7 @@ if (( ! DRY_RUN )); then
   info "Linked openclaw-bridge → $NPM_BIN/openclaw-bridge"
 fi
 
-step 7 $TOTAL "Patch ~/.openclaw/openclaw.json"
+step 9 $TOTAL "Patch ~/.openclaw/openclaw.json"
 node "$REPO_ROOT/scripts/patch-openclaw-config.mjs" "$HOME/.openclaw/openclaw.json" "$PORT" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 if (( ! DRY_RUN )); then
   if openclaw config validate >/dev/null 2>&1; then
@@ -199,10 +199,10 @@ if (( ! DRY_RUN )); then
   fi
 fi
 
-step 8 $TOTAL "Patch gateway plist (if present)"
+step 10 $TOTAL "Patch gateway plist (if present)"
 node "$REPO_ROOT/scripts/patch-gateway-plist.mjs" "$GATEWAY_PLIST" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 9 $TOTAL "Render proxy plist & (re)load launchd services"
+step 11 $TOTAL "Render proxy plist & (re)load launchd services"
 if (( DRY_RUN )); then
   dim "  would write: $PROXY_PLIST"
   dim "  would: launchctl bootout/bootstrap proxy (and gateway if present)"
@@ -250,7 +250,7 @@ else
   fi
 fi
 
-step 10 $TOTAL "Claude Code permissions"
+step 12 $TOTAL "Claude Code permissions"
 add_claude_perms() {
   if (( DRY_RUN )); then
     node "$REPO_ROOT/scripts/patch-claude-settings.mjs" --dry-run
@@ -303,14 +303,14 @@ EOF
     ;;
 esac
 
-step 11 $TOTAL "Verify"
+step 13 $TOTAL "Verify"
 if (( SKIP_VERIFY || DRY_RUN )); then
   info "Skipping verify ($([[ $DRY_RUN -eq 1 ]] && echo dry-run || echo --skip-verify))."
 else
   PORT="$PORT" "$REPO_ROOT/verify.sh" || warn "verify reported failures — check the table above."
 fi
 
-step 12 $TOTAL "Install MCP bridge binaries (openclaw-core-mcp, openclaw-watch)"
+step 14 $TOTAL "Install MCP bridge binaries (openclaw-core-mcp, openclaw-watch)"
 if (( DRY_RUN )); then
   dim "  would: (cd $REPO_ROOT && npm install --workspaces --include-workspace-root --no-audit --no-fund)"
   dim "  would: npm run build -w mcp-core && npm run build -w watch-cli"
