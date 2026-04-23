@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+import url from "node:url";
+import path from "node:path";
+
+const here = path.dirname(url.fileURLToPath(import.meta.url));
+
+const commands = {
+  accounts:    "./commands/accounts.mjs",
+  mode:        "./commands/mode.mjs",
+  status:      "./commands/status.mjs",
+  tail:        "./commands/tail.mjs",
+  reload:      "./commands/reload.mjs",
+  "rotate-now": "./commands/rotate-now.mjs",
+  circuit:     "./commands/circuit.mjs",
+};
+
+const [sub, ...rest] = process.argv.slice(2);
+if (!sub || sub === "-h" || sub === "--help") {
+  console.log(`openclaw-bridge <command> [args]
+
+Commands:
+  accounts {add|list|rm|test} [label]    manage pooled accounts
+  mode {single|multi}                    flip rotator mode
+  status                                 mode + health + recent decisions
+  tail                                   live rotator.log
+  reload                                 restart proxy via launchctl
+  rotate-now                             clear sticky lastMainLabel
+  circuit {status|probe|clear}           auth-cascade circuit breaker
+`);
+  process.exit(sub ? 0 : 1);
+}
+
+const rel = commands[sub];
+if (!rel) {
+  console.error(`openclaw-bridge: unknown command "${sub}"`);
+  process.exit(2);
+}
+const mod = await import(path.join(here, rel));
+await mod.default(rest);
