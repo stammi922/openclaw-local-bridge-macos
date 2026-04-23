@@ -14,17 +14,20 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 NON_INTERACTIVE=0
 RESTORE="prompt"   # prompt | latest | none
+PURGE_ACCOUNTS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=1; shift ;;
     --restore-latest)  RESTORE="latest"; shift ;;
     --no-restore)      RESTORE="none"; shift ;;
+    --purge-accounts)  PURGE_ACCOUNTS=1; shift ;;
     -h|--help)
       cat <<EOF
 Usage: uninstall.sh [flags]
   --non-interactive    No prompts; combine with --restore-latest or --no-restore
   --restore-latest     Restore the most recent backup without asking
   --no-restore         Don't restore anything — only stop & remove the bridge
+  --purge-accounts     Also delete ~/.openclaw/bridge/accounts/* (destroys OAuth creds)
 EOF
       exit 0 ;;
     *) die "Unknown flag: $1" ;;
@@ -36,12 +39,12 @@ PROXY_HOME="$(proxy_install_dir)"
 GATEWAY_PLIST="$(gateway_plist_path)"
 BACKUPS_DIR="$HOME/.openclaw/bridge-backups"
 
-step 1 6 "Stop and unload the proxy launchd service"
+step 1 7 "Stop and unload the proxy launchd service"
 UID_=$(id -u)
 launchctl bootout "gui/$UID_/ai.claude-max-api-proxy" 2>/dev/null || true
 ok "Service unloaded (or wasn't loaded)."
 
-step 2 6 "Remove proxy plist and install dir"
+step 2 7 "Remove proxy plist and install dir"
 if [[ -f "$PROXY_PLIST" ]]; then
   rm -f "$PROXY_PLIST"
   ok "Removed $PROXY_PLIST"
@@ -53,7 +56,7 @@ fi
 # Remove the bridge dir if it's now empty.
 [[ -d "$HOME/.openclaw/bridge" ]] && rmdir "$HOME/.openclaw/bridge" 2>/dev/null || true
 
-step 3 6 "Choose backup to restore"
+step 3 7 "Choose backup to restore"
 if [[ ! -d "$BACKUPS_DIR" ]] || [[ -z "$(ls -A "$BACKUPS_DIR" 2>/dev/null)" ]]; then
   warn "No backups found under $BACKUPS_DIR. Skipping restore."
   RESTORE="none"
@@ -81,7 +84,7 @@ if [[ "$RESTORE" != "none" ]]; then
   fi
 fi
 
-step 4 6 "Restore from $CHOSEN"
+step 4 7 "Restore from $CHOSEN"
 if [[ "$RESTORE" == "none" ]] || [[ -z "$CHOSEN" ]]; then
   info "Skipping restore."
 else
@@ -103,7 +106,7 @@ else
   fi
 fi
 
-step 5 6 "Unlink MCP bridge binaries and remove mcp-config.json"
+step 5 7 "Unlink MCP bridge binaries and remove mcp-config.json"
 if [[ -d "$HERE/mcp-core" ]]; then
   (cd "$HERE/mcp-core" && npm unlink 2>/dev/null) || warn "npm unlink failed for mcp-core (may already be unlinked)"
 else
@@ -131,7 +134,30 @@ else
   info "No mcp-config.json to remove."
 fi
 
-step 6 6 "Reload gateway (so restored env / plist is honored)"
+step 6 7 "Remove rotator CLI symlink and optionally purge accounts"
+info "Removing openclaw-bridge CLI symlink…"
+NPM_BIN="$(npm prefix -g 2>/dev/null)/bin"
+[[ -L "$NPM_BIN/openclaw-bridge" ]] && rm -f "$NPM_BIN/openclaw-bridge"
+
+if (( PURGE_ACCOUNTS == 1 )); then
+  warn "Purging per-account OAuth credentials at ~/.openclaw/bridge/accounts/"
+  if (( NON_INTERACTIVE == 1 )); then
+    ANS="purge"
+  else
+    read -r -p "Type 'purge' to confirm: " ANS
+  fi
+  if [[ "$ANS" == "purge" ]]; then
+    rm -rf "$HOME/.openclaw/bridge/accounts"
+    rm -f "$HOME/.openclaw/bridge/accounts.json" "$HOME/.openclaw/bridge/state.json" "$HOME/.openclaw/bridge/rotator.config.json"
+    info "Purged."
+  else
+    warn "Not purging."
+  fi
+else
+  info "Kept ~/.openclaw/bridge/accounts/ (use --purge-accounts to delete)"
+fi
+
+step 7 7 "Reload gateway (so restored env / plist is honored)"
 if [[ -f "$GATEWAY_PLIST" ]]; then
   launchctl bootout "gui/$UID_/ai.openclaw.gateway" 2>/dev/null || true
   launchctl bootstrap "gui/$UID_" "$GATEWAY_PLIST"
