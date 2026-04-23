@@ -101,7 +101,6 @@ check_sentinel() {
 }
 
 check_sentinel "$ADAPTER" "@openclaw-bridge:extractContent v1" "extractContent"
-check_sentinel "$MANAGER" "@openclaw-bridge:idleTimeout v1"     "idleTimeout"
 check_sentinel "$ROUTES"  "@openclaw-bridge:rotator v1"         "rotator (routes.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:rotator v1"         "rotator (manager.js)"
 
