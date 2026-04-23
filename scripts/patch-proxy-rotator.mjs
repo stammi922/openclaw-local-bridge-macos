@@ -44,7 +44,6 @@ const MANAGER_ENV_TO = `                this.process = spawn("claude", args, {
                 });`;
 
 const MANAGER_STDERR_FROM = `                this.process.stderr?.on("data", (chunk) => {
-                    armIdleTimeout();
                     const errorText = chunk.toString().trim();
                     if (errorText) {
                         // Don't emit as error unless it's actually an error
@@ -54,7 +53,6 @@ const MANAGER_STDERR_FROM = `                this.process.stderr?.on("data", (ch
                 });`;
 
 const MANAGER_STDERR_TO = `                this.process.stderr?.on("data", (chunk) => {
-                    armIdleTimeout();
                     const errorText = chunk.toString().trim();
                     if (errorText) {
                         ${SENTINEL}
