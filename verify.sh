@@ -112,6 +112,7 @@ check_sentinel() {
 check_sentinel "$ADAPTER" "@openclaw-bridge:extractContent v1" "extractContent"
 check_sentinel "$ROUTES"  "@openclaw-bridge:rotator v1"         "rotator (routes.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:rotator v1"         "rotator (manager.js)"
+check_sentinel "$MANAGER" "@openclaw-bridge:timeout v1"         "timeout (manager.js)"
 
 if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
   echo "  ✓ rotator modules staged in proxy tree"
