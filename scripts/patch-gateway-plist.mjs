@@ -39,6 +39,26 @@ function plutil(...argv) {
   return spawnSync("plutil", argv, { encoding: "utf8" });
 }
 
+// Walk dotted keyPath and seed any missing intermediate dicts as empty
+// dictionaries. `plutil -insert a.b -string …` fails when `a` does not
+// exist; `openclaw doctor --fix` (observed 2026.4.29) re-renders the
+// gateway plist without an `EnvironmentVariables` block at all, so the
+// patcher has to be able to create the parent dict from scratch.
+function ensureParentDicts(keyPath) {
+  const parts = keyPath.split(".");
+  if (parts.length < 2) return;
+  for (let i = 1; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join(".");
+    if (plutil("-extract", prefix, "raw", target).status === 0) continue;
+    if (dryRun) continue;
+    const seed = plutil("-insert", prefix, "-dictionary", target);
+    if (seed.status !== 0) {
+      console.error(`gateway plist: failed to seed parent dict ${prefix}: ${seed.stderr.trim()}`);
+      process.exit(1);
+    }
+  }
+}
+
 function ensureString(keyPath, desired, label) {
   const extract = plutil("-extract", keyPath, "raw", target);
   let action;
@@ -58,12 +78,9 @@ function ensureString(keyPath, desired, label) {
     return;
   }
 
-  let mut = plutil(`-${action}`, keyPath, "-string", desired, target);
-  if (mut.status !== 0 && action === "insert") {
-    // Edge case: the parent dict may not exist yet — fall back to replace,
-    // which creates the key at top level.
-    mut = plutil("-replace", keyPath, "-string", desired, target);
-  }
+  ensureParentDicts(keyPath);
+
+  const mut = plutil(`-${action}`, keyPath, "-string", desired, target);
   if (mut.status !== 0) {
     console.error(`gateway plist: plutil failed for ${label}: ${mut.stderr.trim()}`);
     process.exit(1);
