@@ -151,6 +151,16 @@ else
   echo "  ✗ openclaw-bridge CLI not on PATH"
 fi
 
+echo ""
+echo "── skills checks ────────────────────────────────────────────"
+
+skills_count=$(find "$HOME/.openclaw/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$skills_count" -ge 10 ]]; then
+  echo "  ✓ openclaw skills installed (count=$skills_count)"
+else
+  echo "  ✗ expected ≥10 skills in ~/.openclaw/skills/, found $skills_count"
+fi
+
 # Print table
 echo
 echo "Verify results (port $PORT):"

@@ -174,6 +174,9 @@ node "$REPO_ROOT/scripts/patch-proxy-timeout.mjs" "$PROXY_HOME" $([[ $DRY_RUN -e
 step 9 $TOTAL "Patch proxy system-prompt isolation"
 node "$REPO_ROOT/scripts/patch-proxy-system-prompt.mjs" "$PROXY_HOME" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
+step 10 $TOTAL "Install superpowers skills"
+node "$REPO_ROOT/scripts/install-skills.mjs" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
+
 step 11 $TOTAL "Scaffold rotator bridge state and link CLI"
 BRIDGE_DIR="$HOME/.openclaw/bridge"
 if (( ! DRY_RUN )); then
