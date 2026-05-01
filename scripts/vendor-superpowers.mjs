@@ -75,7 +75,11 @@ if (!fs.existsSync(upstreamLicense)) die(`no LICENSE in upstream clone: ${upstre
 
 // Read upstream commit SHA (the script doesn't try to be clever about dirty
 // trees; the maintainer is expected to run from a clean clone).
-const sha = spawnSync("git", ["rev-parse", "HEAD"], { cwd: upstreamClone, encoding: "utf8" }).stdout.trim();
+const shaResult = spawnSync("git", ["rev-parse", "HEAD"], { cwd: upstreamClone, encoding: "utf8" });
+if (shaResult.error || shaResult.status !== 0) {
+  die(`git rev-parse failed in ${upstreamClone}: ${shaResult.error?.message ?? shaResult.stderr?.trim() ?? "unknown"}`);
+}
+const sha = (shaResult.stdout ?? "").trim();
 if (!/^[0-9a-f]{40}$/.test(sha)) die(`failed to read upstream HEAD SHA from ${upstreamClone}`);
 
 const dest = path.join(bridgeRoot, "skills", "superpowers");
@@ -102,7 +106,7 @@ for (const skill of KEEP) {
       fs.writeFileSync(destFile, body);
     } else if (entry.isDirectory()) {
       // Recursively copy any subdirs (some skills have references/, fixtures/).
-      fs.cpSync(srcFile, destFile, { recursive: true });
+      fs.cpSync(srcFile, destFile, { recursive: true, dereference: false });
     } else if (entry.isFile()) {
       fs.copyFileSync(srcFile, destFile);
     }
@@ -129,7 +133,7 @@ fs.writeFileSync(path.join(dest, "README.md"),
   `not vendored. See \`docs/superpowers/specs/2026-05-01-openclaw-orchestration-control-design.md\`.\n\n` +
   `## Sync from upstream\n\n` +
   "```bash\n" +
-  `cd "$(dirname "$(realpath "$0")/..")"\n` +
+  `# run from the openclaw-local-bridge-macos repo root\n` +
   `git clone --depth 1 --branch main https://github.com/obra/superpowers.git /tmp/sp\n` +
   `node scripts/vendor-superpowers.mjs --upstream-clone /tmp/sp\n` +
   `git diff skills/superpowers/\n` +
