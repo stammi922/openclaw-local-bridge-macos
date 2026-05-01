@@ -192,7 +192,9 @@ test("patch-proxy-system-prompt: fresh patch sets sentinels in all 3 files + iso
   assert.ok(manager.includes("--disable-slash-commands"), "isolation flag");
   assert.ok(manager.includes('"--setting-sources", "project"'), "setting-sources flag");
   assert.ok(manager.includes("options.systemPrompt"), "manager forwards options.systemPrompt to argv");
-  assert.ok(adapter.includes("systemPrompt"), "adapter return now includes systemPrompt field");
+  // Tight assertions on adapter — sentinel comment alone contains "systemPrompt", so look for the field syntax + filtering call.
+  assert.ok(adapter.includes("systemPrompt:"), "adapter return object now includes a systemPrompt field");
+  assert.ok(adapter.includes("_nonSystem") || adapter.includes(".filter("), "adapter filters role:'system' out of prompt input");
   assert.ok(routes.includes("cliInput.systemPrompt"), "routes forwards cliInput.systemPrompt to start options");
 });
 
@@ -213,11 +215,17 @@ test("patch-proxy-system-prompt: re-run is byte-identical (idempotent)", () => {
 
 test("patch-proxy-system-prompt: --dry-run makes no changes + reports plan", () => {
   const d = mkFakeProxy();
-  const before = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"));
+  const mBefore = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"));
+  const aBefore = fs.readFileSync(path.join(d, "dist", "adapter", "openai-to-cli.js"));
+  const rBefore = fs.readFileSync(path.join(d, "dist", "server", "routes.js"));
   const out = execFileSync("node", [patcher, d, "--dry-run"]).toString();
   assert.match(out, /WOULD patch/);
-  const after = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"));
-  assert.ok(before.equals(after), "no changes on dry-run");
+  const mAfter = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"));
+  const aAfter = fs.readFileSync(path.join(d, "dist", "adapter", "openai-to-cli.js"));
+  const rAfter = fs.readFileSync(path.join(d, "dist", "server", "routes.js"));
+  assert.ok(mBefore.equals(mAfter), "manager.js unchanged on dry-run");
+  assert.ok(aBefore.equals(aAfter), "openai-to-cli.js unchanged on dry-run");
+  assert.ok(rBefore.equals(rAfter), "routes.js unchanged on dry-run");
 });
 
 test("patch-proxy-system-prompt: missing anchor → non-zero exit with 'anchor' in stderr", () => {
@@ -234,7 +242,7 @@ test("patch-proxy-system-prompt: missing anchor → non-zero exit with 'anchor' 
 test("patch-proxy-system-prompt: missing proxy root → exits with error", () => {
   let err;
   try {
-    execFileSync("node", ["/dev/null", "/definitely/does/not/exist"], { stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("node", [patcher, "/definitely/does/not/exist"], { stdio: ["ignore", "pipe", "pipe"] });
   } catch (e) { err = e; }
   assert.ok(err);
 });
