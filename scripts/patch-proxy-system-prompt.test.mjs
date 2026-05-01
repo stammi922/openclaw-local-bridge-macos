@@ -39,7 +39,9 @@ test("patch-proxy-system-prompt: fresh patch sets sentinels in all 3 files + iso
   // Tight assertions on adapter — sentinel comment alone contains "systemPrompt", so look for the field syntax + filtering call.
   assert.ok(adapter.includes("systemPrompt:"), "adapter return object now includes a systemPrompt field");
   assert.ok(adapter.includes("_nonSystem") || adapter.includes(".filter("), "adapter filters role:'system' out of prompt input");
-  assert.ok(routes.includes("cliInput.systemPrompt"), "routes forwards cliInput.systemPrompt to start options");
+  // routes.js has TWO subprocess.start call sites (streaming + non-streaming). Both must be patched.
+  const routesMatches = (routes.match(/cliInput\.systemPrompt/g) || []).length;
+  assert.ok(routesMatches >= 2, `routes forwards cliInput.systemPrompt at BOTH call sites (saw ${routesMatches} occurrences)`);
 });
 
 test("patch-proxy-system-prompt: re-run is byte-identical (idempotent)", () => {

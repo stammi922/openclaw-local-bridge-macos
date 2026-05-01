@@ -48,18 +48,36 @@ export function openaiToCli(request) {
     };
 }`;
 
-// Single anchor: subprocess.start call site in routes.js.
-const ROUTES_ANCHOR = `        subprocess.start(cliInput.prompt, {
+// Two anchors: routes.js has both a streaming and a non-streaming
+// subprocess.start call site, with different formatting. Both must be
+// patched or non-streaming requests silently lose the system prompt.
+const ROUTES_ANCHOR_STREAMING = `        subprocess.start(cliInput.prompt, {
             model: cliInput.model,
             sessionId: cliInput.sessionId,
         }).catch((err) => {`;
 
-const ROUTES_REPLACEMENT = `        ${SENTINEL}
+const ROUTES_REPLACEMENT_STREAMING = `        ${SENTINEL}
         subprocess.start(cliInput.prompt, {
             model: cliInput.model,
             sessionId: cliInput.sessionId,
             systemPrompt: cliInput.systemPrompt,
         }).catch((err) => {`;
+
+const ROUTES_ANCHOR_NONSTREAMING = `        subprocess
+            .start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+        })
+            .catch((error) => {`;
+
+const ROUTES_REPLACEMENT_NONSTREAMING = `        ${SENTINEL}
+        subprocess
+            .start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+            systemPrompt: cliInput.systemPrompt,
+        })
+            .catch((error) => {`;
 
 // Single anchor: --no-session-persistence line in buildArgsImpl.
 const MANAGER_ANCHOR = `        "--no-session-persistence",`;
@@ -99,12 +117,20 @@ let routesUpdated  = routesOrig;
 let managerUpdated = managerOrig;
 
 if (!adapterPatched) {
+  // The adapter replacement references extractContent() — bail loudly if
+  // patch-adapter.mjs hasn't run first, otherwise post-patch JS is broken.
+  if (!adapterOrig.includes("@openclaw-bridge:extractContent v1")) {
+    die("openai-to-cli.js missing @openclaw-bridge:extractContent v1 sentinel — run patch-adapter.mjs first");
+  }
   if (!adapterOrig.includes(ADAPTER_ANCHOR)) die("openai-to-cli.js openaiToCli anchor changed — upstream bumped");
   adapterUpdated = adapterOrig.replace(ADAPTER_ANCHOR, ADAPTER_REPLACEMENT);
 }
 if (!routesPatched) {
-  if (!routesOrig.includes(ROUTES_ANCHOR)) die("routes.js subprocess.start anchor changed — upstream bumped");
-  routesUpdated = routesOrig.replace(ROUTES_ANCHOR, ROUTES_REPLACEMENT);
+  if (!routesOrig.includes(ROUTES_ANCHOR_STREAMING)) die("routes.js streaming subprocess.start anchor changed — upstream bumped");
+  if (!routesOrig.includes(ROUTES_ANCHOR_NONSTREAMING)) die("routes.js non-streaming subprocess.start anchor changed — upstream bumped");
+  routesUpdated = routesOrig
+    .replace(ROUTES_ANCHOR_STREAMING, ROUTES_REPLACEMENT_STREAMING)
+    .replace(ROUTES_ANCHOR_NONSTREAMING, ROUTES_REPLACEMENT_NONSTREAMING);
 }
 if (!managerPatched) {
   if (!managerOrig.includes(MANAGER_ANCHOR)) die("manager.js --no-session-persistence anchor changed — upstream bumped");
