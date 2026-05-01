@@ -1,0 +1,4 @@
+e7a2d16476bf042e9add4699c9d018a90f86e4a6
+2026-05-01
+
+# vendored from obra/superpowers @ e7a2d16476bf042e9add4699c9d018a90f86e4a6 on 2026-05-01
