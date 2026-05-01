@@ -42,8 +42,9 @@ Each script has one clear responsibility; no script crosses halves. Half 1 patch
 **Files:**
 - Create: `test/fixtures/system-prompt/manager.pre.js`
 - Create: `test/fixtures/system-prompt/openai-to-cli.pre.js`
+- Create: `test/fixtures/system-prompt/routes.pre.js`
 
-These are minimal stubs containing only the lines the patcher needs to anchor to. Patterned after the existing `test/fixtures/rotator/manager.pre.js`.
+Minimal stubs that are **faithful slices of the live vendored proxy**. The Task 3 patcher will anchor on these files. Fidelity to the live shape matters: anchors on a fictional shape would pass Task 3's tests but fail when applied to the real proxy in Task 4.
 
 - [ ] **Step 1: Create the dir**
 
@@ -80,30 +81,59 @@ function buildArgsImpl(prompt, options) {
 }
 ```
 
-- [ ] **Step 3: Write `openai-to-cli.pre.js` fixture**
+- [ ] **Step 3: Write `openai-to-cli.pre.js` fixture (faithful slice of live adapter)**
 
 File: `test/fixtures/system-prompt/openai-to-cli.pre.js`
 
 ```js
 // Fixture: pre-patch openai-to-cli.js (matches live vendored proxy shape, post-extractContent patch)
-export function openaiToCli(body) {
+// @openclaw-bridge:extractContent v1
+function extractContent(c) {
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map(p => (p && p.type === "text" && typeof p.text === "string") ? p.text : "").filter(Boolean).join("\n");
+  return String(c == null ? "" : c);
+}
+export function messagesToPrompt(messages) {
     const parts = [];
-    for (const msg of body.messages || []) {
+    for (const msg of messages) {
         switch (msg.role) {
             case "system":
-                // @openclaw-bridge:extractContent v1
+                // System messages become context instructions
                 parts.push(`<system>\n${extractContent(msg.content)}\n</system>\n`);
                 break;
             case "user":
-                parts.push(`<user>\n${extractContent(msg.content)}\n</user>\n`);
+                parts.push(extractContent(msg.content));
                 break;
         }
     }
-    return { prompt: parts.join("") };
+    return parts.join("\n").trim();
+}
+export function openaiToCli(request) {
+    return {
+        prompt: messagesToPrompt(request.messages),
+        model: extractModel(request.model),
+        sessionId: request.user, // Use OpenAI's user field for session mapping
+    };
 }
 ```
 
-- [ ] **Step 4: Commit fixtures**
+- [ ] **Step 4: Write `routes.pre.js` fixture (subprocess.start call site)**
+
+File: `test/fixtures/system-prompt/routes.pre.js`
+
+```js
+// Fixture: pre-patch routes.js (subprocess.start call site, post-rotator patch)
+        // Start the subprocess
+        subprocess.start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+        }).catch((err) => {
+            console.error("[Streaming] Subprocess start error:", err);
+            reject(err);
+        });
+```
+
+- [ ] **Step 5: Commit fixtures**
 
 ```bash
 cd ~/GitProjects/openclaw-local-bridge-macos
@@ -137,27 +167,33 @@ const repoRoot = path.resolve(here, "..");
 const patcher = path.join(repoRoot, "scripts", "patch-proxy-system-prompt.mjs");
 const managerFixture = path.join(repoRoot, "test", "fixtures", "system-prompt", "manager.pre.js");
 const adapterFixture = path.join(repoRoot, "test", "fixtures", "system-prompt", "openai-to-cli.pre.js");
+const routesFixture  = path.join(repoRoot, "test", "fixtures", "system-prompt", "routes.pre.js");
 
 function mkFakeProxy() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "patch-sysprompt-"));
   fs.mkdirSync(path.join(d, "dist", "subprocess"), { recursive: true });
   fs.mkdirSync(path.join(d, "dist", "adapter"), { recursive: true });
+  fs.mkdirSync(path.join(d, "dist", "server"), { recursive: true });
   fs.copyFileSync(managerFixture, path.join(d, "dist", "subprocess", "manager.js"));
   fs.copyFileSync(adapterFixture, path.join(d, "dist", "adapter", "openai-to-cli.js"));
+  fs.copyFileSync(routesFixture,  path.join(d, "dist", "server", "routes.js"));
   return d;
 }
 
-test("patch-proxy-system-prompt: fresh patch sets sentinels in both files + isolation flags", () => {
+test("patch-proxy-system-prompt: fresh patch sets sentinels in all 3 files + isolation flags + systemPrompt routing", () => {
   const d = mkFakeProxy();
   execFileSync("node", [patcher, d]);
   const manager = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"), "utf8");
   const adapter = fs.readFileSync(path.join(d, "dist", "adapter", "openai-to-cli.js"), "utf8");
-  assert.ok(manager.includes("@openclaw-bridge:systemPrompt v1"), "manager.js sentinel present");
-  assert.ok(adapter.includes("@openclaw-bridge:systemPrompt v1"), "openai-to-cli.js sentinel present");
-  assert.ok(manager.includes("--disable-slash-commands"), "isolation flag present");
-  assert.ok(manager.includes('"--setting-sources", "project"'), "setting-sources flag present");
-  assert.ok(manager.includes("options.systemPrompt"), "systemPrompt threaded through");
-  assert.ok(!adapter.includes("<system>"), "adapter no longer inlines system as <system> tags");
+  const routes  = fs.readFileSync(path.join(d, "dist", "server", "routes.js"), "utf8");
+  assert.ok(manager.includes("@openclaw-bridge:systemPrompt v1"), "manager.js sentinel");
+  assert.ok(adapter.includes("@openclaw-bridge:systemPrompt v1"), "openai-to-cli.js sentinel");
+  assert.ok(routes.includes("@openclaw-bridge:systemPrompt v1"),  "routes.js sentinel");
+  assert.ok(manager.includes("--disable-slash-commands"), "isolation flag");
+  assert.ok(manager.includes('"--setting-sources", "project"'), "setting-sources flag");
+  assert.ok(manager.includes("options.systemPrompt"), "manager forwards options.systemPrompt to argv");
+  assert.ok(adapter.includes("systemPrompt"), "adapter return now includes systemPrompt field");
+  assert.ok(routes.includes("cliInput.systemPrompt"), "routes forwards cliInput.systemPrompt to start options");
 });
 
 test("patch-proxy-system-prompt: re-run is byte-identical (idempotent)", () => {
@@ -165,11 +201,14 @@ test("patch-proxy-system-prompt: re-run is byte-identical (idempotent)", () => {
   execFileSync("node", [patcher, d]);
   const m1 = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"));
   const a1 = fs.readFileSync(path.join(d, "dist", "adapter", "openai-to-cli.js"));
+  const r1 = fs.readFileSync(path.join(d, "dist", "server", "routes.js"));
   execFileSync("node", [patcher, d]);
   const m2 = fs.readFileSync(path.join(d, "dist", "subprocess", "manager.js"));
   const a2 = fs.readFileSync(path.join(d, "dist", "adapter", "openai-to-cli.js"));
+  const r2 = fs.readFileSync(path.join(d, "dist", "server", "routes.js"));
   assert.ok(m1.equals(m2), "manager.js byte-identical");
   assert.ok(a1.equals(a2), "openai-to-cli.js byte-identical");
+  assert.ok(r1.equals(r2), "routes.js byte-identical");
 });
 
 test("patch-proxy-system-prompt: --dry-run makes no changes + reports plan", () => {
@@ -233,17 +272,19 @@ File: `scripts/patch-proxy-system-prompt.mjs`
 // Idempotent patcher: makes openclaw fully own the system prompt when
 // claude CLI is invoked from the proxy.
 //
-// Three changes:
-//  1. dist/adapter/openai-to-cli.js — extract role:"system" content into
-//     a separate string instead of inlining as <system>...</system> tags.
-//     Returned alongside the prompt as { prompt, systemPrompt }.
-//  2. dist/subprocess/manager.js — accept options.systemPrompt and prepend
-//     `--system-prompt <text>` to claude argv when set.
+// Three files patched (one anchor each):
+//  1. dist/adapter/openai-to-cli.js — replace openaiToCli() body so it
+//     filters role:"system" messages out of messagesToPrompt input and
+//     returns them as a separate `systemPrompt` field.
+//  2. dist/server/routes.js — forward cliInput.systemPrompt to
+//     subprocess.start(prompt, options).
 //  3. dist/subprocess/manager.js — add --disable-slash-commands and
-//     --setting-sources project to claude argv unconditionally.
+//     --setting-sources project to claude argv, plus --system-prompt
+//     when options.systemPrompt is set.
 //
 // Together these strip Claude Code's default system prompt + plugin
-// auto-load, leaving openclaw's prompt as the actual system prompt.
+// auto-load, leaving openclaw's role:"system" content as Claude CLI's
+// actual system prompt.
 //
 // Sentinel: @openclaw-bridge:systemPrompt v1
 //
@@ -255,29 +296,42 @@ import process from "node:process";
 
 const SENTINEL = "// @openclaw-bridge:systemPrompt v1";
 
-const ADAPTER_ANCHOR = `            case "system":
-                // @openclaw-bridge:extractContent v1
-                parts.push(\`<system>\\n\${extractContent(msg.content)}\\n</system>\\n\`);`;
+// Single anchor: replace whole openaiToCli function body.
+const ADAPTER_ANCHOR = `export function openaiToCli(request) {
+    return {
+        prompt: messagesToPrompt(request.messages),
+        model: extractModel(request.model),
+        sessionId: request.user, // Use OpenAI's user field for session mapping
+    };
+}`;
 
-const ADAPTER_REPLACEMENT = `            case "system":
-                ${SENTINEL}
-                // openclaw owns the system prompt; extract it for claude --system-prompt
-                // instead of inlining as user-message <system> tags.
-                systemParts.push(extractContent(msg.content));`;
+const ADAPTER_REPLACEMENT = `${SENTINEL}
+export function openaiToCli(request) {
+    const _all = request.messages || [];
+    const _systemMsgs = _all.filter(m => m.role === "system");
+    const _nonSystem = _all.filter(m => m.role !== "system");
+    return {
+        prompt: messagesToPrompt(_nonSystem),
+        systemPrompt: _systemMsgs.map(m => extractContent(m.content)).join("\\n\\n") || undefined,
+        model: extractModel(request.model),
+        sessionId: request.user, // Use OpenAI's user field for session mapping
+    };
+}`;
 
-// The adapter also needs a `systemParts` array declared alongside `parts`,
-// and the return value must include systemPrompt. Anchor on the function
-// opening — this is where parts is declared.
-const ADAPTER_DECL_ANCHOR = `    const parts = [];`;
-const ADAPTER_DECL_REPLACEMENT = `    const parts = [];
-    ${SENTINEL}
-    const systemParts = [];`;
+// Single anchor: subprocess.start call site in routes.js.
+const ROUTES_ANCHOR = `        subprocess.start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+        }).catch((err) => {`;
 
-// And the return must add systemPrompt. Anchor on the existing return.
-const ADAPTER_RETURN_ANCHOR = `    return { prompt: parts.join("") };`;
-const ADAPTER_RETURN_REPLACEMENT = `    ${SENTINEL}
-    return { prompt: parts.join(""), systemPrompt: systemParts.join("\\n\\n") || undefined };`;
+const ROUTES_REPLACEMENT = `        ${SENTINEL}
+        subprocess.start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+            systemPrompt: cliInput.systemPrompt,
+        }).catch((err) => {`;
 
+// Single anchor: --no-session-persistence line in buildArgsImpl.
 const MANAGER_ANCHOR = `        "--no-session-persistence",`;
 const MANAGER_REPLACEMENT = `        "--no-session-persistence",
         ${SENTINEL}
@@ -297,29 +351,31 @@ if (!proxyRoot) die("usage: patch-proxy-system-prompt.mjs <proxy-root> [--dry-ru
 if (!fs.existsSync(proxyRoot)) die(`proxy root not found: ${proxyRoot}`);
 
 const adapterPath = path.join(proxyRoot, "dist", "adapter", "openai-to-cli.js");
+const routesPath  = path.join(proxyRoot, "dist", "server", "routes.js");
 const managerPath = path.join(proxyRoot, "dist", "subprocess", "manager.js");
-for (const p of [adapterPath, managerPath]) {
+for (const p of [adapterPath, routesPath, managerPath]) {
   if (!fs.existsSync(p)) die(`expected file not found: ${p}`);
 }
 
 const adapterOrig = fs.readFileSync(adapterPath, "utf8");
+const routesOrig  = fs.readFileSync(routesPath, "utf8");
 const managerOrig = fs.readFileSync(managerPath, "utf8");
 const adapterPatched = adapterOrig.includes(SENTINEL);
+const routesPatched  = routesOrig.includes(SENTINEL);
 const managerPatched = managerOrig.includes(SENTINEL);
 
 let adapterUpdated = adapterOrig;
+let routesUpdated  = routesOrig;
 let managerUpdated = managerOrig;
 
 if (!adapterPatched) {
-  if (!adapterOrig.includes(ADAPTER_ANCHOR)) die("openai-to-cli.js system-case anchor changed — upstream bumped");
-  if (!adapterOrig.includes(ADAPTER_DECL_ANCHOR)) die("openai-to-cli.js parts declaration anchor changed — upstream bumped");
-  if (!adapterOrig.includes(ADAPTER_RETURN_ANCHOR)) die("openai-to-cli.js return anchor changed — upstream bumped");
-  adapterUpdated = adapterOrig
-    .replace(ADAPTER_ANCHOR, ADAPTER_REPLACEMENT)
-    .replace(ADAPTER_DECL_ANCHOR, ADAPTER_DECL_REPLACEMENT)
-    .replace(ADAPTER_RETURN_ANCHOR, ADAPTER_RETURN_REPLACEMENT);
+  if (!adapterOrig.includes(ADAPTER_ANCHOR)) die("openai-to-cli.js openaiToCli anchor changed — upstream bumped");
+  adapterUpdated = adapterOrig.replace(ADAPTER_ANCHOR, ADAPTER_REPLACEMENT);
 }
-
+if (!routesPatched) {
+  if (!routesOrig.includes(ROUTES_ANCHOR)) die("routes.js subprocess.start anchor changed — upstream bumped");
+  routesUpdated = routesOrig.replace(ROUTES_ANCHOR, ROUTES_REPLACEMENT);
+}
 if (!managerPatched) {
   if (!managerOrig.includes(MANAGER_ANCHOR)) die("manager.js --no-session-persistence anchor changed — upstream bumped");
   managerUpdated = managerOrig.replace(MANAGER_ANCHOR, MANAGER_REPLACEMENT);
@@ -328,15 +384,18 @@ if (!managerPatched) {
 if (dryRun) {
   console.log(`patch-proxy-system-prompt: dry-run against ${proxyRoot}`);
   console.log(`  openai-to-cli.js : ${adapterPatched ? "already patched" : "WOULD patch"}`);
+  console.log(`  routes.js        : ${routesPatched  ? "already patched" : "WOULD patch"}`);
   console.log(`  manager.js       : ${managerPatched ? "already patched" : "WOULD patch"}`);
   process.exit(0);
 }
 
 if (!adapterPatched) fs.writeFileSync(adapterPath, adapterUpdated);
+if (!routesPatched)  fs.writeFileSync(routesPath, routesUpdated);
 if (!managerPatched) fs.writeFileSync(managerPath, managerUpdated);
 
 console.log(`patch-proxy-system-prompt:`);
 console.log(`  openai-to-cli.js : ${adapterPatched ? "unchanged (already patched)" : "patched"}`);
+console.log(`  routes.js        : ${routesPatched  ? "unchanged (already patched)" : "patched"}`);
 console.log(`  manager.js       : ${managerPatched ? "unchanged (already patched)" : "patched"}`);
 ```
 
@@ -425,6 +484,7 @@ In `verify.sh`, in the `── rotator checks` block, after the existing `check_
 
 ```bash
 check_sentinel "$ADAPTER" "@openclaw-bridge:systemPrompt v1" "system-prompt (adapter)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:systemPrompt v1" "system-prompt (routes)"
 check_sentinel "$MANAGER" "@openclaw-bridge:systemPrompt v1" "system-prompt (manager)"
 ```
 
