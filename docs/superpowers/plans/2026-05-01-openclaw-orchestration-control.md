@@ -117,19 +117,36 @@ export function openaiToCli(request) {
 }
 ```
 
-- [ ] **Step 4: Write `routes.pre.js` fixture (subprocess.start call site)**
+- [ ] **Step 4: Write `routes.pre.js` fixture (BOTH subprocess.start call sites)**
+
+`routes.js` has TWO call sites that take `cliInput`: the streaming branch (~line 159) and the non-streaming branch (~line 204), with different formatting. Both must be patched, so the fixture must contain both.
 
 File: `test/fixtures/system-prompt/routes.pre.js`
 
 ```js
-// Fixture: pre-patch routes.js (subprocess.start call site, post-rotator patch)
-        // Start the subprocess
+// Fixture: pre-patch routes.js (BOTH subprocess.start call sites, post-rotator patch)
+        // Start the subprocess (streaming branch)
         subprocess.start(cliInput.prompt, {
             model: cliInput.model,
             sessionId: cliInput.sessionId,
         }).catch((err) => {
             console.error("[Streaming] Subprocess start error:", err);
             reject(err);
+        });
+        // Start the subprocess (non-streaming branch — chained-call formatting from upstream bundler)
+        subprocess
+            .start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+        })
+            .catch((error) => {
+            res.status(500).json({
+                error: {
+                    message: `Claude CLI startup failed: ${error.message}`,
+                    type: "server_error",
+                    code: null,
+                },
+            });
         });
 ```
 
@@ -195,7 +212,9 @@ test("patch-proxy-system-prompt: fresh patch sets sentinels in all 3 files + iso
   // Tight assertions on adapter — sentinel comment alone contains "systemPrompt", so look for the field syntax + filtering call.
   assert.ok(adapter.includes("systemPrompt:"), "adapter return object now includes a systemPrompt field");
   assert.ok(adapter.includes("_nonSystem") || adapter.includes(".filter("), "adapter filters role:'system' out of prompt input");
-  assert.ok(routes.includes("cliInput.systemPrompt"), "routes forwards cliInput.systemPrompt to start options");
+  // routes.js has TWO subprocess.start call sites (streaming + non-streaming). Both must be patched.
+  const routesMatches = (routes.match(/cliInput\.systemPrompt/g) || []).length;
+  assert.ok(routesMatches >= 2, `routes forwards cliInput.systemPrompt at BOTH call sites (saw ${routesMatches} occurrences)`);
 });
 
 test("patch-proxy-system-prompt: re-run is byte-identical (idempotent)", () => {
@@ -326,18 +345,36 @@ export function openaiToCli(request) {
     };
 }`;
 
-// Single anchor: subprocess.start call site in routes.js.
-const ROUTES_ANCHOR = `        subprocess.start(cliInput.prompt, {
+// Two anchors: routes.js has both a streaming and a non-streaming
+// subprocess.start call site, with different formatting. Both must be
+// patched or non-streaming requests silently lose the system prompt.
+const ROUTES_ANCHOR_STREAMING = `        subprocess.start(cliInput.prompt, {
             model: cliInput.model,
             sessionId: cliInput.sessionId,
         }).catch((err) => {`;
 
-const ROUTES_REPLACEMENT = `        ${SENTINEL}
+const ROUTES_REPLACEMENT_STREAMING = `        ${SENTINEL}
         subprocess.start(cliInput.prompt, {
             model: cliInput.model,
             sessionId: cliInput.sessionId,
             systemPrompt: cliInput.systemPrompt,
         }).catch((err) => {`;
+
+const ROUTES_ANCHOR_NONSTREAMING = `        subprocess
+            .start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+        })
+            .catch((error) => {`;
+
+const ROUTES_REPLACEMENT_NONSTREAMING = `        ${SENTINEL}
+        subprocess
+            .start(cliInput.prompt, {
+            model: cliInput.model,
+            sessionId: cliInput.sessionId,
+            systemPrompt: cliInput.systemPrompt,
+        })
+            .catch((error) => {`;
 
 // Single anchor: --no-session-persistence line in buildArgsImpl.
 const MANAGER_ANCHOR = `        "--no-session-persistence",`;
@@ -377,12 +414,20 @@ let routesUpdated  = routesOrig;
 let managerUpdated = managerOrig;
 
 if (!adapterPatched) {
+  // The adapter replacement references extractContent() — bail loudly if
+  // patch-adapter.mjs hasn't run first, otherwise post-patch JS is broken.
+  if (!adapterOrig.includes("@openclaw-bridge:extractContent v1")) {
+    die("openai-to-cli.js missing @openclaw-bridge:extractContent v1 sentinel — run patch-adapter.mjs first");
+  }
   if (!adapterOrig.includes(ADAPTER_ANCHOR)) die("openai-to-cli.js openaiToCli anchor changed — upstream bumped");
   adapterUpdated = adapterOrig.replace(ADAPTER_ANCHOR, ADAPTER_REPLACEMENT);
 }
 if (!routesPatched) {
-  if (!routesOrig.includes(ROUTES_ANCHOR)) die("routes.js subprocess.start anchor changed — upstream bumped");
-  routesUpdated = routesOrig.replace(ROUTES_ANCHOR, ROUTES_REPLACEMENT);
+  if (!routesOrig.includes(ROUTES_ANCHOR_STREAMING)) die("routes.js streaming subprocess.start anchor changed — upstream bumped");
+  if (!routesOrig.includes(ROUTES_ANCHOR_NONSTREAMING)) die("routes.js non-streaming subprocess.start anchor changed — upstream bumped");
+  routesUpdated = routesOrig
+    .replace(ROUTES_ANCHOR_STREAMING, ROUTES_REPLACEMENT_STREAMING)
+    .replace(ROUTES_ANCHOR_NONSTREAMING, ROUTES_REPLACEMENT_NONSTREAMING);
 }
 if (!managerPatched) {
   if (!managerOrig.includes(MANAGER_ANCHOR)) die("manager.js --no-session-persistence anchor changed — upstream bumped");
