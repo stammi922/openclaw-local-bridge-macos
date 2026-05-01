@@ -113,6 +113,9 @@ check_sentinel "$ADAPTER" "@openclaw-bridge:extractContent v1" "extractContent"
 check_sentinel "$ROUTES"  "@openclaw-bridge:rotator v1"         "rotator (routes.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:rotator v1"         "rotator (manager.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:timeout v1"         "timeout (manager.js)"
+check_sentinel "$ADAPTER" "@openclaw-bridge:systemPrompt v1" "system-prompt (adapter)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:systemPrompt v1" "system-prompt (routes)"
+check_sentinel "$MANAGER" "@openclaw-bridge:systemPrompt v1" "system-prompt (manager)"
 
 if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
   echo "  ✓ rotator modules staged in proxy tree"

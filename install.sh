@@ -69,7 +69,7 @@ done
 
 # ---------- Steps ----------------------------------------------------------
 
-TOTAL=15
+TOTAL=17
 
 step 1 $TOTAL "Preflight checks"
 require_macos
@@ -171,7 +171,10 @@ node "$REPO_ROOT/scripts/patch-proxy-rotator.mjs" "$PROXY_HOME" $([[ $DRY_RUN -e
 step 8 $TOTAL "Patch proxy subprocess timeout"
 node "$REPO_ROOT/scripts/patch-proxy-timeout.mjs" "$PROXY_HOME" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 9 $TOTAL "Scaffold rotator bridge state and link CLI"
+step 9 $TOTAL "Patch proxy system-prompt isolation"
+node "$REPO_ROOT/scripts/patch-proxy-system-prompt.mjs" "$PROXY_HOME" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
+
+step 11 $TOTAL "Scaffold rotator bridge state and link CLI"
 BRIDGE_DIR="$HOME/.openclaw/bridge"
 if (( ! DRY_RUN )); then
   mkdir -p "$BRIDGE_DIR"
@@ -190,7 +193,7 @@ if (( ! DRY_RUN )); then
   info "Linked openclaw-bridge → $NPM_BIN/openclaw-bridge"
 fi
 
-step 10 $TOTAL "Patch ~/.openclaw/openclaw.json"
+step 12 $TOTAL "Patch ~/.openclaw/openclaw.json"
 node "$REPO_ROOT/scripts/patch-openclaw-config.mjs" "$HOME/.openclaw/openclaw.json" "$PORT" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 if (( ! DRY_RUN )); then
   if openclaw config validate >/dev/null 2>&1; then
@@ -202,10 +205,10 @@ if (( ! DRY_RUN )); then
   fi
 fi
 
-step 11 $TOTAL "Patch gateway plist (if present)"
+step 13 $TOTAL "Patch gateway plist (if present)"
 node "$REPO_ROOT/scripts/patch-gateway-plist.mjs" "$GATEWAY_PLIST" $([[ $DRY_RUN -eq 1 ]] && echo --dry-run)
 
-step 12 $TOTAL "Render proxy plist & (re)load launchd services"
+step 14 $TOTAL "Render proxy plist & (re)load launchd services"
 if (( DRY_RUN )); then
   dim "  would write: $PROXY_PLIST"
   dim "  would: launchctl bootout/bootstrap proxy (and gateway if present)"
@@ -253,7 +256,7 @@ else
   fi
 fi
 
-step 13 $TOTAL "Claude Code permissions"
+step 15 $TOTAL "Claude Code permissions"
 add_claude_perms() {
   if (( DRY_RUN )); then
     node "$REPO_ROOT/scripts/patch-claude-settings.mjs" --dry-run
@@ -306,14 +309,14 @@ EOF
     ;;
 esac
 
-step 14 $TOTAL "Verify"
+step 16 $TOTAL "Verify"
 if (( SKIP_VERIFY || DRY_RUN )); then
   info "Skipping verify ($([[ $DRY_RUN -eq 1 ]] && echo dry-run || echo --skip-verify))."
 else
   PORT="$PORT" "$REPO_ROOT/verify.sh" || warn "verify reported failures — check the table above."
 fi
 
-step 15 $TOTAL "Install MCP bridge binaries (openclaw-core-mcp, openclaw-watch)"
+step 17 $TOTAL "Install MCP bridge binaries (openclaw-core-mcp, openclaw-watch)"
 if (( DRY_RUN )); then
   dim "  would: (cd $REPO_ROOT && npm install --workspaces --include-workspace-root --no-audit --no-fund)"
   dim "  would: npm run build -w mcp-core && npm run build -w watch-cli"
