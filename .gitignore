@@ -30,3 +30,8 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Superpowers / agent working notes (plans, findings, brainstorms, research).
+# Public repo: keep all of these out of history. Routinely contain
+# infra/business-sensitive detail (device ids, cron names, hostnames).
+docs/superpowers/

@@ -55,6 +55,16 @@ for f in "$TEMPLATE_PROXY_UNIT" "$TEMPLATE_OVERRIDE" "$PATCH_SCRIPT" "$DETECT_SC
     [ -f "$f" ] || fatal "missing repo file: $f"
 done
 
+# Activate the in-repo pre-commit hook (blocks accidental commits of
+# secrets and docs/superpowers/ working notes). No-op if already set.
+HOOKS_DIR="$REPO_ROOT/scripts/git-hooks"
+if [ -d "$HOOKS_DIR" ] && [ -d "$REPO_ROOT/.git" ]; then
+    CURRENT_HOOKS_PATH="$(git -C "$REPO_ROOT" config --get core.hooksPath || true)"
+    if [ "$CURRENT_HOOKS_PATH" != "scripts/git-hooks" ]; then
+        git -C "$REPO_ROOT" config core.hooksPath scripts/git-hooks
+    fi
+fi
+
 banner
 
 # -------- safety checks --------------------------------------------------
