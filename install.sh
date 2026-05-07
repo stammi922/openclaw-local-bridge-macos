@@ -170,6 +170,79 @@ else
     warn "openai-to-cli.js not found at expected path; skipping array-content patch"
 fi
 
+# -------- patch claude-max-api-proxy subprocess manager (silence debug noise)
+# The shipped manager.js logs `[Subprocess] Received N bytes of stdout` for
+# every chunk streamed back from the claude CLI. On a busy host this dominates
+# the err log (millions of lines, tens of MB). Gate it (and the spawn/close
+# debug lines) behind OPENCLAW_BRIDGE_DEBUG=1.
+
+MANAGER_FILE="$PROXY_ROOT/dist/subprocess/manager.js"
+
+if [ -f "$MANAGER_FILE" ]; then
+    if grep -q "@openclaw-bridge:silent-debug v1" "$MANAGER_FILE"; then
+        ok "subprocess manager already patched (silent-debug v1 present)"
+    else
+        info "patching subprocess manager (silence per-chunk debug logging)"
+        cp -a "$MANAGER_FILE" "${MANAGER_FILE}.bak.$(date +%s)"
+        node -e '
+const fs = require("fs");
+const p = process.argv[1];
+let s = fs.readFileSync(p, "utf8");
+const marker = "// @openclaw-bridge:silent-debug v1";
+if (s.includes(marker)) process.exit(0);
+const guard = "if (process.env.OPENCLAW_BRIDGE_DEBUG === \"1\") ";
+s = s.replace(
+  "console.error(`[Subprocess] Process spawned with PID: ${this.process.pid}`);",
+  guard + "console.error(`[Subprocess] Process spawned with PID: ${this.process.pid}`);"
+);
+s = s.replace(
+  "console.error(`[Subprocess] Received ${data.length} bytes of stdout`);",
+  guard + "console.error(`[Subprocess] Received ${data.length} bytes of stdout`);"
+);
+s = s.replace(
+  "console.error(`[Subprocess] Process closed with code: ${code}`);",
+  guard + "console.error(`[Subprocess] Process closed with code: ${code}`);"
+);
+s = "// @openclaw-bridge:silent-debug v1\n" + s;
+fs.writeFileSync(p, s);
+' "$MANAGER_FILE"
+        ok "subprocess manager patched (silent-debug v1)"
+    fi
+else
+    warn "subprocess manager.js not found at expected path; skipping silent-debug patch"
+fi
+
+# -------- patch claude-max-api-proxy subprocess manager (strip null bytes)
+# Some plugin-supplied system prompts can contain embedded NULs which crash
+# spawn() with ERR_INVALID_ARG_VALUE: "must be a string without null bytes".
+# Defensive fix: scrub NUL bytes from prompt + systemPrompt at the entry of
+# buildArgsImpl. Marker: @openclaw-bridge:strip-null-bytes v1
+
+if [ -f "$MANAGER_FILE" ]; then
+    if grep -q "@openclaw-bridge:strip-null-bytes v1" "$MANAGER_FILE"; then
+        ok "subprocess manager already patched (strip-null-bytes v1 present)"
+    else
+        info "patching subprocess manager (strip null bytes from prompt/systemPrompt)"
+        cp -a "$MANAGER_FILE" "${MANAGER_FILE}.bak.$(date +%s)"
+        node -e '
+const fs = require("fs");
+const p = process.argv[1];
+let s = fs.readFileSync(p, "utf8");
+const marker = "// @openclaw-bridge:strip-null-bytes v1";
+if (s.includes(marker)) process.exit(0);
+const inject = "    // @openclaw-bridge:strip-null-bytes v1\n" +
+               "    if (typeof prompt === \"string\" && prompt.indexOf(\"\\u0000\") !== -1) prompt = prompt.replace(/\\u0000/g, \"\");\n" +
+               "    if (options && typeof options.systemPrompt === \"string\" && options.systemPrompt.indexOf(\"\\u0000\") !== -1) options = { ...options, systemPrompt: options.systemPrompt.replace(/\\u0000/g, \"\") };\n";
+s = s.replace(
+  "function buildArgsImpl(prompt, options) {\n",
+  "function buildArgsImpl(prompt, options) {\n" + inject
+);
+fs.writeFileSync(p, s);
+' "$MANAGER_FILE"
+        ok "subprocess manager patched (strip-null-bytes v1)"
+    fi
+fi
+
 # -------- backup openclaw.json -------------------------------------------
 
 info 'Backing up OpenClaw config'
