@@ -46,14 +46,20 @@ globalThis.__OB_TEST_sessionLock = __obSessionLock;
 
 // concurrency-cap leaves this exact opening shape; we replace it with one
 // that takes the session lock between cap acquire and the rest of the body.
+//
+// The session id mirrors openaiToCli's derivation (`sessionId: request.user`)
+// but we read req.body.user directly here. Calling openaiToCli would (a) throw
+// on bodies missing `messages` — the original handler wants to return 400
+// invalid_messages for those, not propagate a TypeError as a 500 — and (b)
+// duplicate work that the original handler already does after our wrapper.
 const CAP_OPEN_ANCHOR = "await __obAcquire();\n    try {";
 
 const CAP_OPEN_REPLACEMENT =
   `await __obAcquire();
     let __obLock = { release: () => {} };
     try {
-        const __obCli = openaiToCli(req.body || {});
-        __obLock = __obSessionLock(__obCli && __obCli.sessionId);
+        const __obSessionId = (req.body && typeof req.body.user === "string") ? req.body.user : "";
+        __obLock = __obSessionLock(__obSessionId);
         await __obLock.wait;
         try {`;
 
