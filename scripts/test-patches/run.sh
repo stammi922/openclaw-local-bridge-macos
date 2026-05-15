@@ -24,6 +24,14 @@ cp -a "$PROXY_ROOT/dist/adapter/openai-to-cli.js" "$TMP/dist/adapter/openai-to-c
 cp -a "$PROXY_ROOT/dist/adapter/cli-to-openai.js" "$TMP/dist/adapter/cli-to-openai.js"
 cp -a "$PROXY_ROOT/dist/types/"*.js "$TMP/dist/types/" 2>/dev/null || true
 
+# Symlink the proxy's node_modules so the patched routes.js can resolve
+# its imports (uuid, etc.) when loaded by the smoke harness.
+if [ -d "$PROXY_ROOT/node_modules" ]; then
+    ln -s "$PROXY_ROOT/node_modules" "$TMP/node_modules"
+fi
+# Mark the tempdir as ESM so routes.js (which uses `import`) loads correctly.
+echo '{"type":"module"}' > "$TMP/package.json"
+
 ROUTES_FILE="$TMP/dist/server/routes.js"
 
 PATCHES_SH="$TMP/_patches.sh"

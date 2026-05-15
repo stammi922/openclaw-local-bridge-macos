@@ -408,6 +408,87 @@ else
     warn "routes.js not found at expected path; skipping session-serialize patch"
 fi
 
+# -------- patch claude-max-api-proxy routes.js (stream safety) -----------
+# (1) Send `:keep-alive` SSE comments every 15s so upstream gateways with
+# short idle timeouts (~55s observed in OpenClaw) do not abort quiet streams.
+# (2) When the CLI emits a `result` event without preceding `content_delta`s,
+# synthesize one chunk from result.result so the client never sees an empty
+# response. Marker: @openclaw-bridge:stream-safety v1
+
+# >>> patch:stream_safety
+apply_stream_safety() {
+    local routes_file="$1"
+    if grep -q "@openclaw-bridge:stream-safety v1" "$routes_file"; then
+        return 0
+    fi
+    cp -a "$routes_file" "${routes_file}.bak.$(date +%s)"
+    node -e '
+const fs = require("fs");
+const p = process.argv[1];
+let s = fs.readFileSync(p, "utf8");
+const marker = "// @openclaw-bridge:stream-safety v1";
+if (s.includes(marker)) process.exit(0);
+
+s = s.replace(
+  "async function handleStreamingResponse(req, res, subprocess, cliInput, requestId) {",
+  marker + "\nexport async function __OB_TEST_handleStreamingResponse(req, res, subprocess, cliInput, requestId) {"
+);
+s = s.replace(
+  "await handleStreamingResponse(req, res, subprocess, cliInput, requestId);",
+  "await __OB_TEST_handleStreamingResponse(req, res, subprocess, cliInput, requestId);"
+);
+
+const okAnchor = "res.write(\":ok\\n\\n\");";
+if (!s.includes(okAnchor)) { console.error(":ok anchor not found"); process.exit(2); }
+s = s.replace(okAnchor, okAnchor + "\n" +
+    "    let __obSawDelta = false;\n" +
+    "    const __obKeepAlive = setInterval(() => {\n" +
+    "        if (!res.writableEnded) { try { res.write(\":keep-alive\\n\\n\"); } catch (_) {} }\n" +
+    "    }, 15000);\n" +
+    "    function __obStopKeepAlive() { if (__obKeepAlive) clearInterval(__obKeepAlive); }");
+
+s = s.replace(
+  "if (text && !res.writableEnded) {",
+  "if (text && !res.writableEnded) { __obSawDelta = true;"
+);
+
+s = s.replace(
+  "subprocess.on(\"result\", (_result) => {",
+  "subprocess.on(\"result\", (_result) => {\n            __obStopKeepAlive();\n" +
+  "            if (!__obSawDelta && _result && typeof _result.result === \"string\" && _result.result.length > 0 && !res.writableEnded) {\n" +
+  "                const fallbackChunk = {\n" +
+  "                    id: `chatcmpl-${requestId}`,\n" +
+  "                    object: \"chat.completion.chunk\",\n" +
+  "                    created: Math.floor(Date.now() / 1000),\n" +
+  "                    model: lastModel,\n" +
+  "                    choices: [{ index: 0, delta: { role: \"assistant\", content: _result.result }, finish_reason: null }],\n" +
+  "                };\n" +
+  "                res.write(`data: ${JSON.stringify(fallbackChunk)}\\n\\n`);\n" +
+  "            }"
+);
+
+s = s.replace("subprocess.on(\"error\", (error) => {", "subprocess.on(\"error\", (error) => { __obStopKeepAlive();");
+s = s.replace("subprocess.on(\"close\", (code) => {\n            // Subprocess exited", "subprocess.on(\"close\", (code) => { __obStopKeepAlive();\n            // Subprocess exited");
+s = s.replace("res.on(\"close\", () => {", "res.on(\"close\", () => { __obStopKeepAlive();");
+
+fs.writeFileSync(p, s);
+' "$routes_file"
+    return 0
+}
+# <<< patch:stream_safety
+
+if [ -f "$ROUTES_FILE" ]; then
+    if grep -q "@openclaw-bridge:stream-safety v1" "$ROUTES_FILE"; then
+        ok "routes.js already patched (stream-safety v1 present)"
+    else
+        info "patching routes.js (keep-alive + empty-result fallback)"
+        apply_stream_safety "$ROUTES_FILE"
+        ok "routes.js patched (stream-safety v1)"
+    fi
+else
+    warn "routes.js not found at expected path; skipping stream-safety patch"
+fi
+
 # -------- backup openclaw.json -------------------------------------------
 
 info 'Backing up OpenClaw config'
