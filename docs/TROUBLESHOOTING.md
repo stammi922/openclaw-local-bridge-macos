@@ -196,6 +196,50 @@ journal output, so others can find the fix.
   grep -E '"model":|"primary":|"fallbacks":' ~/.openclaw/openclaw.json
   ```
 
+## 13. Tuning concurrency
+
+By default the proxy caps concurrent `claude` subprocesses at 4. Symptoms
+that you may want a different cap:
+
+- Bridge feels slow under burst (raise it).
+- Gateway logs `liveness warning ... eventLoopUtilization=1` or the
+  machine starts swapping (lower it).
+
+Edit `~/.config/systemd/user/claude-max-api-proxy.service`, add or update
+under `[Service]`:
+
+```
+Environment=OPENCLAW_BRIDGE_MAX_CONCURRENT=2
+```
+
+Then reload and restart:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart claude-max-api-proxy.service
+```
+
+Same-session-id requests (those sharing the OpenAI `user` field) are
+always serialized regardless of cap; this is a separate guarantee against
+context mixing when two callers reuse the same session id.
+
+## 14. Empty responses or `incomplete turn detected` in gateway logs
+
+The proxy ships with a `stream-safety` patch that synthesizes a single
+chunk from `result.result` when the Claude CLI emits a result event with
+no preceding streaming deltas. If you still see empty responses after
+running `install.sh`, verify the patch was applied:
+
+```bash
+grep -c 'openclaw-bridge:stream-safety v1' \
+    "$(dirname "$(readlink -f "$(command -v claude-max-api 2>/dev/null || echo /opt/none)")")/../dist/server/routes.js" 2>/dev/null \
+    || grep -rc 'openclaw-bridge:stream-safety v1' \
+        "$(npm root -g)/claude-max-api-proxy/dist/server/routes.js"
+```
+
+A non-zero count means the patch is in place. If it is missing, re-run
+`install.sh` (idempotent).
+
 ## Getting help
 
 Open an issue on GitHub with:

@@ -85,6 +85,27 @@ user units will land in `~/.config/systemd/user/`.
 If anything fails along the way, the script stops, the backup is still in
 place, and the troubleshooting doc explains how to recover.
 
+## Runtime tuning
+
+Two environment variables, both honored by the installed patches:
+
+- `OPENCLAW_BRIDGE_MAX_CONCURRENT` — cap on concurrent `claude` subprocesses
+  the proxy will run in parallel. Default `4`. Set in
+  `~/.config/systemd/user/claude-max-api-proxy.service` under `[Service]`
+  as `Environment=OPENCLAW_BRIDGE_MAX_CONCURRENT=2` (or whatever value),
+  then `systemctl --user daemon-reload && systemctl --user restart claude-max-api-proxy.service`.
+- `OPENCLAW_BRIDGE_DEBUG=1` — re-enable the per-chunk subprocess debug
+  logging that the installer silences by default.
+
+The installer also applies routes.js patches that (1) serialize requests
+sharing the same OpenAI `user` field so two concurrent
+`claude --session-id X` invocations never run simultaneously, (2) keep
+streaming responses alive with periodic SSE comments so upstream gateways
+with short idle timeouts do not abort quiet streams, and (3) synthesize a
+final chunk if the CLI emits a `result` event with no streaming deltas
+(otherwise the client sees an empty response). All patches are idempotent;
+running `install.sh` twice is a no-op.
+
 ## Uninstall
 
 ```bash
