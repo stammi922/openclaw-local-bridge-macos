@@ -226,7 +226,7 @@ fi
 # Some plugin-supplied system prompts can contain embedded NULs which crash
 # spawn() with ERR_INVALID_ARG_VALUE: "must be a string without null bytes".
 # Defensive fix: scrub NUL bytes from prompt + systemPrompt at the entry of
-# buildArgsImpl. Marker: @openclaw-bridge:strip-null-bytes v1
+# the buildArgs class method. Marker: @openclaw-bridge:strip-null-bytes v1
 
 if [ -f "$MANAGER_FILE" ]; then
     if grep -q "@openclaw-bridge:strip-null-bytes v1" "$MANAGER_FILE"; then
@@ -240,15 +240,21 @@ const p = process.argv[1];
 let s = fs.readFileSync(p, "utf8");
 const marker = "// @openclaw-bridge:strip-null-bytes v1";
 if (s.includes(marker)) process.exit(0);
-const inject = "    // @openclaw-bridge:strip-null-bytes v1\n" +
-               "    if (typeof prompt === \"string\" && prompt.indexOf(\"\\u0000\") !== -1) prompt = prompt.replace(/\\u0000/g, \"\");\n" +
-               "    if (options && typeof options.systemPrompt === \"string\" && options.systemPrompt.indexOf(\"\\u0000\") !== -1) options = { ...options, systemPrompt: options.systemPrompt.replace(/\\u0000/g, \"\") };\n";
-s = s.replace(
-  "function buildArgsImpl(prompt, options) {\n",
-  "function buildArgsImpl(prompt, options) {\n" + inject
-);
+const anchor = "    buildArgs(prompt, options) {\n";
+if (s.indexOf(anchor) === -1) {
+  console.error("strip-null-bytes: anchor not found (expected `    buildArgs(prompt, options) {`); upstream may have renamed it again.");
+  process.exit(2);
+}
+const inject = "        // @openclaw-bridge:strip-null-bytes v1\n" +
+               "        if (typeof prompt === \"string\" && prompt.indexOf(\"\\u0000\") !== -1) prompt = prompt.replace(/\\u0000/g, \"\");\n" +
+               "        if (options && typeof options.systemPrompt === \"string\" && options.systemPrompt.indexOf(\"\\u0000\") !== -1) options = { ...options, systemPrompt: options.systemPrompt.replace(/\\u0000/g, \"\") };\n";
+s = s.replace(anchor, anchor + inject);
+if (!s.includes(marker)) {
+  console.error("strip-null-bytes: marker did not land after replace");
+  process.exit(3);
+}
 fs.writeFileSync(p, s);
-' "$MANAGER_FILE"
+' "$MANAGER_FILE" || fatal 'strip-null-bytes patch failed; manager.js untouched'
         ok "subprocess manager patched (strip-null-bytes v1)"
     fi
 fi
