@@ -68,10 +68,16 @@ When you run `./install.sh`:
 3. **Patches the proxy adapter** to handle OpenClaw 4.15+'s array-typed
    message content (without this, system prompts arrive as the literal string
    `"[object Object]"` and break tool calls).
-4. **Adds `CLAUDE_CODE_ENTRYPOINT=cli`** to your existing
+4. **Patches the proxy routes** with three streaming/concurrency safety nets:
+   bounds parallel `claude` subprocesses (default 4, override via
+   `OPENCLAW_BRIDGE_MAX_CONCURRENT`); serializes requests sharing the same
+   OpenAI `user` field so two concurrent `claude --session-id X` calls never
+   run together; and adds streaming keep-alives + a fallback chunk so the
+   gateway never receives an empty `[DONE]`. See "Runtime tuning" below.
+5. **Adds `CLAUDE_CODE_ENTRYPOINT=cli`** to your existing
    `ai.openclaw.gateway.plist` so the gateway tells Claude Code it's running
    from the CLI rather than the IDE.
-5. **Optionally** (asks first) adds `"permissions": {"allow": ["Bash(*)", "mcp__*"]}`
+6. **Optionally** (asks first) adds `"permissions": {"allow": ["Bash(*)", "mcp__*"]}`
    to `~/.claude/settings.json` so OpenClaw agents can run tools through
    Claude Code without being prompted for each call. **You can decline.**
 
@@ -133,6 +139,33 @@ clones itself to a temp dir before doing anything destructive.)
 --uninstall                    Delegate to ./uninstall.sh
 --help                         Show this help
 ```
+
+---
+
+## Runtime tuning
+
+Two environment variables are honored by the proxy when set in
+`~/Library/LaunchAgents/ai.claude-max-api-proxy.plist` under
+`EnvironmentVariables`:
+
+- `OPENCLAW_BRIDGE_MAX_CONCURRENT` — cap on concurrent `claude` subprocesses
+  the proxy will run in parallel. Default `4`. Lower if the gateway logs
+  `[diagnostic] liveness warning … eventLoopUtilization=1` under burst load
+  (each `claude` child is a full Node + agent process, ~150-300 MB RSS).
+  Raise if you have headroom and want higher throughput.
+- `OPENCLAW_BRIDGE_DEBUG=1` — re-enables the per-chunk subprocess debug
+  logging that step 9 silences by default.
+
+After editing the plist, reload the proxy:
+
+```bash
+launchctl bootout "gui/$(id -u)/ai.claude-max-api-proxy" 2>/dev/null
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/ai.claude-max-api-proxy.plist
+```
+
+Same-session-id requests (those sharing the OpenAI `user` field) are always
+serialized regardless of the cap; this is a separate guarantee against
+context mixing when two callers reuse the same session id.
 
 ---
 
