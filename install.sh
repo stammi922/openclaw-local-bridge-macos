@@ -253,6 +253,82 @@ fs.writeFileSync(p, s);
     fi
 fi
 
+# -------- patch claude-max-api-proxy routes.js (concurrency cap) ----------
+# Bound the number of parallel `claude` subprocesses to prevent CPU/RAM
+# saturation under burst load. Default cap 4, override via
+# OPENCLAW_BRIDGE_MAX_CONCURRENT in the systemd unit Environment.
+# Marker: @openclaw-bridge:concurrency-cap v1
+
+ROUTES_FILE="$PROXY_ROOT/dist/server/routes.js"
+
+# >>> patch:concurrency_cap
+apply_concurrency_cap() {
+    local routes_file="$1"
+    if grep -q "@openclaw-bridge:concurrency-cap v1" "$routes_file"; then
+        return 0
+    fi
+    cp -a "$routes_file" "${routes_file}.bak.$(date +%s)"
+    node -e '
+const fs = require("fs");
+const p = process.argv[1];
+let s = fs.readFileSync(p, "utf8");
+const marker = "// @openclaw-bridge:concurrency-cap v1";
+if (s.includes(marker)) process.exit(0);
+const moduleBlock = `
+${marker}
+const __OB_MAX = Math.max(1, parseInt(process.env.OPENCLAW_BRIDGE_MAX_CONCURRENT || "4", 10));
+let __OB_active = 0;
+const __OB_waiters = [];
+function __obAcquire() {
+  if (__OB_active < __OB_MAX) { __OB_active++; return Promise.resolve(); }
+  return new Promise((resolve) => __OB_waiters.push(() => { __OB_active++; resolve(); }));
+}
+function __obRelease() {
+  __OB_active--;
+  const next = __OB_waiters.shift();
+  if (next) next();
+}
+globalThis.__OB_TEST_acquire = __obAcquire;
+globalThis.__OB_TEST_release = __obRelease;
+globalThis.__OB_TEST_max = __OB_MAX;
+`;
+const importRe = /(^import [^\n]+\n)+/m;
+const m = s.match(importRe);
+if (!m) { console.error("could not locate imports in routes.js"); process.exit(2); }
+s = s.slice(0, m.index + m[0].length) + moduleBlock + s.slice(m.index + m[0].length);
+
+const fnAnchor = "export async function handleChatCompletions(req, res) {";
+const idx = s.indexOf(fnAnchor);
+if (idx === -1) { console.error("could not find handleChatCompletions"); process.exit(3); }
+let depth = 0, end = -1;
+for (let i = idx + fnAnchor.length - 1; i < s.length; i++) {
+  if (s[i] === "{") depth++;
+  else if (s[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
+}
+if (end === -1) { console.error("could not find matching brace for handleChatCompletions"); process.exit(4); }
+const before = s.slice(0, idx + fnAnchor.length);
+const body = s.slice(idx + fnAnchor.length, end);
+const after = s.slice(end);
+const wrapped = `\n    await __obAcquire();\n    try {${body}    } finally { __obRelease(); }\n`;
+s = before + wrapped + after;
+fs.writeFileSync(p, s);
+' "$routes_file"
+    return 0
+}
+# <<< patch:concurrency_cap
+
+if [ -f "$ROUTES_FILE" ]; then
+    if grep -q "@openclaw-bridge:concurrency-cap v1" "$ROUTES_FILE"; then
+        ok "routes.js already patched (concurrency-cap v1 present)"
+    else
+        info "patching routes.js (bounded concurrency cap)"
+        apply_concurrency_cap "$ROUTES_FILE"
+        ok "routes.js patched (concurrency-cap v1)"
+    fi
+else
+    warn "routes.js not found at expected path; skipping concurrency-cap patch"
+fi
+
 # -------- backup openclaw.json -------------------------------------------
 
 info 'Backing up OpenClaw config'
