@@ -329,6 +329,85 @@ else
     warn "routes.js not found at expected path; skipping concurrency-cap patch"
 fi
 
+# -------- patch claude-max-api-proxy routes.js (session serialize) --------
+# Serialize requests sharing the same OpenAI `user` field so two concurrent
+# `claude --session-id X` invocations never run at the same time. Different
+# session ids still run in parallel, subject to the global cap from
+# concurrency-cap. Marker: @openclaw-bridge:session-serialize v1
+
+# >>> patch:session_serialize
+apply_session_serialize() {
+    local routes_file="$1"
+    if grep -q "@openclaw-bridge:session-serialize v1" "$routes_file"; then
+        return 0
+    fi
+    cp -a "$routes_file" "${routes_file}.bak.$(date +%s)"
+    node -e '
+const fs = require("fs");
+const p = process.argv[1];
+let s = fs.readFileSync(p, "utf8");
+const marker = "// @openclaw-bridge:session-serialize v1";
+if (s.includes(marker)) process.exit(0);
+const moduleBlock = `
+${marker}
+const __OB_sessionLocks = new Map();
+function __obSessionLock(sessionId) {
+  if (!sessionId) {
+    return { wait: Promise.resolve(), release: () => {} };
+  }
+  const prev = __OB_sessionLocks.get(sessionId) || Promise.resolve();
+  let release;
+  const next = new Promise((resolve) => { release = () => {
+    if (__OB_sessionLocks.get(sessionId) === chain) __OB_sessionLocks.delete(sessionId);
+    resolve();
+  }; });
+  const chain = prev.then(() => next);
+  __OB_sessionLocks.set(sessionId, chain);
+  return { wait: prev, release };
+}
+globalThis.__OB_TEST_sessionLock = __obSessionLock;
+`;
+const anchor = "globalThis.__OB_TEST_max = __OB_MAX;\n";
+const idx = s.indexOf(anchor);
+if (idx === -1) { console.error("concurrency-cap block not found; install patches in order"); process.exit(2); }
+s = s.slice(0, idx + anchor.length) + moduleBlock + s.slice(idx + anchor.length);
+
+const acquireAnchor = "await __obAcquire();\n    try {";
+const aIdx = s.indexOf(acquireAnchor);
+if (aIdx === -1) { console.error("concurrency-cap acquire anchor not found"); process.exit(3); }
+const inject = "await __obAcquire();\n" +
+    "    let __obLock = { release: () => {} };\n" +
+    "    try {\n" +
+    "        const __obCli = openaiToCli(req.body || {});\n" +
+    "        __obLock = __obSessionLock(__obCli && __obCli.sessionId);\n" +
+    "        await __obLock.wait;\n" +
+    "        try {";
+s = s.replace(acquireAnchor, inject);
+
+const finallyAnchor = "    } finally { __obRelease(); }";
+const fIdx = s.indexOf(finallyAnchor);
+if (fIdx === -1) { console.error("concurrency-cap finally anchor not found"); process.exit(4); }
+const replaceFinally = "    } finally { __obLock.release(); }\n    } finally { __obRelease(); }";
+s = s.replace(finallyAnchor, replaceFinally);
+
+fs.writeFileSync(p, s);
+' "$routes_file"
+    return 0
+}
+# <<< patch:session_serialize
+
+if [ -f "$ROUTES_FILE" ]; then
+    if grep -q "@openclaw-bridge:session-serialize v1" "$ROUTES_FILE"; then
+        ok "routes.js already patched (session-serialize v1 present)"
+    else
+        info "patching routes.js (per-sessionId serialization)"
+        apply_session_serialize "$ROUTES_FILE"
+        ok "routes.js patched (session-serialize v1)"
+    fi
+else
+    warn "routes.js not found at expected path; skipping session-serialize patch"
+fi
+
 # -------- backup openclaw.json -------------------------------------------
 
 info 'Backing up OpenClaw config'
