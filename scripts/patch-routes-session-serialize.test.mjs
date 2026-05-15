@@ -27,7 +27,7 @@ test("patch-routes-session-serialize: fresh patch on cap-patched file", () => {
   assert.ok(routes.includes("@openclaw-bridge:session-serialize v1"), "sentinel present");
   assert.ok(routes.includes("const __OB_sessionLocks = new Map();"), "session lock map injected");
   assert.ok(routes.includes("function __obSessionLock(sessionId)"), "session lock helper injected");
-  assert.ok(routes.includes("__obLock = __obSessionLock(__obCli && __obCli.sessionId);"), "lock acquired inside handler");
+  assert.ok(routes.includes("__obLock = __obSessionLock(__obSessionId);"), "lock acquired inside handler");
   assert.ok(routes.includes("} finally { __obLock.release(); }"), "lock release in finally");
 });
 
