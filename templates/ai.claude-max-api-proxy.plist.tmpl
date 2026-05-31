@@ -42,6 +42,13 @@
       <string>/etc/ssl/cert.pem</string>
       <key>OPENCLAW_BRIDGE_EVENT_LOG</key>
       <string>{{HOME}}/.openclaw/logs/openclaw-bridge-events.jsonl</string>
+      <!-- Per-process cap on concurrent claude CLI subprocesses. routes.js __OB_MAX
+           defaults to 4 when unset; raised to 6 so 20 staggered crons + interactive +
+           explicit sessions don't starve slots (which stalls queued turns past the
+           gateway's stuck-session abort threshold). Rate-resilience cap still halves
+           it to 3 on a rate-limit. -->
+      <key>OPENCLAW_BRIDGE_MAX_CONCURRENT</key>
+      <string>6</string>
       <key>OPENCLAW_MCP_CONFIG</key>
       <string>{{HOME}}/.openclaw/mcp-config.json</string>
       <key>PATH</key>
