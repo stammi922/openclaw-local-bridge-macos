@@ -66,9 +66,15 @@ else
 fi
 rm -f "/tmp/openclaw-bridge-models.$$"
 
-# 4) gateway env carries CLAUDE_CODE_ENTRYPOINT (only if gateway exists)
+# 4) gateway carries CLAUDE_CODE_ENTRYPOINT.
+# The var is exported at runtime by the env-wrapper (sourcing service-env/*.env),
+# so it is NOT visible in `launchctl print` (which only shows plist-declared env).
+# Check the live process env first, then fall back to the sourced .env file.
 if launchctl list | grep -q 'ai\.openclaw\.gateway'; then
-  if launchctl print "gui/$UID_/ai.openclaw.gateway" 2>/dev/null | grep -q 'CLAUDE_CODE_ENTRYPOINT'; then
+  GW_PID="$(launchctl print "gui/$UID_/ai.openclaw.gateway" 2>/dev/null | awk '/pid =/{print $3; exit}')"
+  GW_ENV="$HOME/.openclaw/service-env/ai.openclaw.gateway.env"
+  if { [[ -n "$GW_PID" ]] && ps eww "$GW_PID" 2>/dev/null | tr ' ' '\n' | grep -q '^CLAUDE_CODE_ENTRYPOINT='; } \
+     || grep -q 'CLAUDE_CODE_ENTRYPOINT' "$GW_ENV" 2>/dev/null; then
     RESULTS+=("PASS  gateway carries CLAUDE_CODE_ENTRYPOINT")
   else
     RESULTS+=("FAIL  gateway env missing CLAUDE_CODE_ENTRYPOINT")
@@ -107,6 +113,7 @@ check_sentinel() {
     echo "  ✓ $label sentinel present"
   else
     echo "  ✗ $label sentinel missing in $file"
+    FAILS=$((FAILS + 1))
   fi
 }
 
@@ -114,9 +121,14 @@ check_sentinel "$ADAPTER" "@openclaw-bridge:extractContent v1" "extractContent"
 check_sentinel "$ROUTES"  "@openclaw-bridge:rotator v1"         "rotator (routes.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:rotator v1"         "rotator (manager.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:timeout v1"         "timeout (manager.js)"
+check_sentinel "$MANAGER" "@openclaw-bridge:silent-debug v1"     "silent-debug (manager.js)"
+check_sentinel "$MANAGER" "@openclaw-bridge:strip-null-bytes v1" "strip-null-bytes (manager.js)"
 check_sentinel "$ADAPTER" "@openclaw-bridge:systemPrompt v1" "system-prompt (adapter)"
 check_sentinel "$ROUTES"  "@openclaw-bridge:systemPrompt v1" "system-prompt (routes)"
 check_sentinel "$MANAGER" "@openclaw-bridge:systemPrompt v1" "system-prompt (manager)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:concurrency-cap v1"   "concurrency-cap (routes.js)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:session-serialize v1" "session-serialize (routes.js)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:stream-safety v1"     "stream-safety (routes.js)"
 check_sentinel "$INDEX"   "@openclaw-bridge:eaddrinuse-retry v1" "eaddrinuse-retry (index.js)"
 
 if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
