@@ -41,6 +41,7 @@ Each patch:
 | 13 | `patch-routes-session-serialize.mjs` | `dist/server/routes.js` | `@openclaw-bridge:session-serialize v1` | Serialize requests per `sessionId`; preserve 400 `invalid_messages` on malformed bodies. |
 | 14 | `patch-routes-stream-safety.mjs` | `dist/server/routes.js` | `@openclaw-bridge:stream-safety v1` | Keep SSE streams alive + empty-result fallback. |
 | 15 | `patch-proxy-eaddrinuse.mjs` | `dist/server/index.js` | `@openclaw-bridge:eaddrinuse-retry v1` | **(2026-05-31)** Retry the port bind with backoff instead of exiting on first `EADDRINUSE`. See incident below. |
+| 16 | `patch-proxy-rate-resilience.mjs` | `dist/subprocess/manager.js`, `dist/server/routes.js`, copies `dist/rate-resilience/*` | `@openclaw-bridge:rate-resilience v1` | Detect CLI usage/burst rate limits → differentiated 429+Retry-After; rate-aware concurrency cap; restore subprocess event emitter (regressed by reinstall). |
 
 (Step numbers track `install.sh`; adding a patch means inserting a step,
 renumbering the rest, and bumping `TOTAL`.)
