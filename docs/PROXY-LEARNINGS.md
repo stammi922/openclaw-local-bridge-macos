@@ -121,6 +121,19 @@ The internal restart paths don't have this problem because they log and cap:
   is stdout-only (info); stderr → `/dev/null` per the plist, so warns/errors can
   be missing there.
 
+**Gateway `ExitTimeOut` (2026-05-31):** the gateway plist sets `ExitTimeOut=330`
+(intent: let the 300s graceful drain finish before launchd SIGKILLs on a
+launchd-initiated stop). **Caveat — macOS launchd clamps it:** with `ExitTimeOut`
+=330 in the plist, `launchctl print … | grep 'exit timeout'` still reports
+`exit timeout = 60`, i.e. launchd honors at most ~60s. So a launchd-initiated stop
+(`bootout`/KeepAlive) still SIGKILLs at ~60s — better than the ~20s default and
+enough for a typical fast drain, but NOT the full 300s. The only path that
+guarantees a full drain remains the gateway's own restart (SIGUSR1/restart tool),
+per the gotcha above. Also: `bootout` triggers the drain, so an immediately
+following `bootstrap` can fail with `Bootstrap failed: 5: Input/output error`
+while the old process is still tearing down — wait for the old pid to exit, then
+bootstrap (or just use `launchctl kickstart -k`).
+
 ## How to add a new proxy patch
 
 1. Copy `scripts/patch-proxy-timeout.mjs` (simplest template) or
