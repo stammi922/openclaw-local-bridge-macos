@@ -99,6 +99,7 @@ PROXY_DIR="$HOME/.openclaw/bridge/claude-max-api-proxy"
 ROUTES="$PROXY_DIR/dist/server/routes.js"
 MANAGER="$PROXY_DIR/dist/subprocess/manager.js"
 ADAPTER="$PROXY_DIR/dist/adapter/openai-to-cli.js"
+INDEX="$PROXY_DIR/dist/server/index.js"
 
 check_sentinel() {
   local file="$1" sentinel="$2" label="$3"
@@ -116,6 +117,7 @@ check_sentinel "$MANAGER" "@openclaw-bridge:timeout v1"         "timeout (manage
 check_sentinel "$ADAPTER" "@openclaw-bridge:systemPrompt v1" "system-prompt (adapter)"
 check_sentinel "$ROUTES"  "@openclaw-bridge:systemPrompt v1" "system-prompt (routes)"
 check_sentinel "$MANAGER" "@openclaw-bridge:systemPrompt v1" "system-prompt (manager)"
+check_sentinel "$INDEX"   "@openclaw-bridge:eaddrinuse-retry v1" "eaddrinuse-retry (index.js)"
 
 if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
   echo "  ✓ rotator modules staged in proxy tree"
