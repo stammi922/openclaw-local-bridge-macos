@@ -130,6 +130,26 @@ check_sentinel "$ROUTES"  "@openclaw-bridge:concurrency-cap v1"   "concurrency-c
 check_sentinel "$ROUTES"  "@openclaw-bridge:session-serialize v1" "session-serialize (routes.js)"
 check_sentinel "$ROUTES"  "@openclaw-bridge:stream-safety v1"     "stream-safety (routes.js)"
 check_sentinel "$INDEX"   "@openclaw-bridge:eaddrinuse-retry v1" "eaddrinuse-retry (index.js)"
+check_sentinel "$MANAGER" "@openclaw-bridge:rate-resilience v1" "rate-resilience (manager.js)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:rate-resilience v1" "rate-resilience (routes.js)"
+
+# timeout VALUE (not just the sentinel) — historical drift had live value at 5min/1h
+if [[ -f "$MANAGER" ]] && grep -q "DEFAULT_TIMEOUT = 7200000" "$MANAGER"; then
+  echo "  ✓ timeout value is 7200000 (2h)"
+else
+  echo "  ✗ timeout value is NOT 7200000 in $MANAGER"
+  FAILS=$((FAILS + 1))
+fi
+
+# rate-resilience standalone modules staged
+for __m in classify backoff cap events; do
+  if [[ -f "$PROXY_DIR/dist/rate-resilience/$__m.js" ]]; then
+    echo "  ✓ rate-resilience module $__m.js present"
+  else
+    echo "  ✗ rate-resilience module $__m.js missing"
+    FAILS=$((FAILS + 1))
+  fi
+done
 
 if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
   echo "  ✓ rotator modules staged in proxy tree"
