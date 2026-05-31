@@ -30,7 +30,7 @@ test("fresh patch: sentinel + modules + valid JS", () => {
     assert.ok(fs.readFileSync(f, "utf8").includes("@openclaw-bridge:rate-resilience v1"));
     execFileSync("node", ["--check", f]);
   }
-  for (const m of ["classify.js", "backoff.js", "cap.js", "events.js"])
+  for (const m of ["classify.js", "backoff.js", "cap.js", "events.js", "retain-failures.mjs"])
     assert.ok(fs.existsSync(path.join(d, "dist", "rate-resilience", m)), `${m} copied`);
   const m = fs.readFileSync(mgr(d), "utf8");
   assert.ok(m.includes('classifyRateLimit(this.stderrTail, code)'));

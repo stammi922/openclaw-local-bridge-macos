@@ -29,7 +29,7 @@ const managerPath = path.join(distDir, "subprocess", "manager.js");
 const routesPath = path.join(distDir, "server", "routes.js");
 const modSrcDir = path.join(repoRoot, "rate-resilience");
 const modDestDir = path.join(distDir, "rate-resilience");
-const MODULES = ["classify.js", "backoff.js", "cap.js", "events.js"];
+const MODULES = ["classify.js", "backoff.js", "cap.js", "events.js", "retain-failures.mjs"];
 for (const p of [managerPath, routesPath]) if (!fs.existsSync(p)) die(`expected file not found: ${p}`);
 
 // ---- manager.js edits ----

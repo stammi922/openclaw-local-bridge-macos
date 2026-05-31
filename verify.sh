@@ -150,6 +150,12 @@ for __m in classify backoff cap events; do
     FAILS=$((FAILS + 1))
   fi
 done
+if [[ -f "$PROXY_DIR/dist/rate-resilience/retain-failures.mjs" ]]; then
+  echo "  ✓ rate-resilience module retain-failures.mjs present"
+else
+  echo "  ✗ rate-resilience module retain-failures.mjs missing"
+  FAILS=$((FAILS + 1))
+fi
 
 if [[ -f "$PROXY_DIR/dist/rotator/index.js" ]]; then
   echo "  ✓ rotator modules staged in proxy tree"
