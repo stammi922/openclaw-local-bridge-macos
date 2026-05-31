@@ -40,18 +40,20 @@ const MGR_CLOSE_ANCHOR = `                // Handle process close
                 this.process.on("close", (code) => {`;
 const MGR_CLOSE_REPLACE = `                // ${SENTINEL.replace("// ", "")}
                 const __obStartedAt = Date.now();
-                let __obSawOutput = false;
-                this.process.stdout?.on("data", () => { __obSawOutput = true; });
                 // Handle process close
                 this.process.on("close", (code) => {
                     this.rateLimit = classifyRateLimit(this.stderrTail, code);
-                    appendBridgeEvent({ type: this.rateLimit ? "subprocess.rate_limited" : "subprocess.close", code, signal: null, durationMs: Date.now() - __obStartedAt, sawOutput: __obSawOutput, killed: this.isKilled, subtype: this.rateLimit?.subtype, retryAfterMs: this.rateLimit?.retryAfterMs });`;
+                    appendBridgeEvent({ type: this.rateLimit ? "subprocess.rate_limited" : "subprocess.close", code, signal: null, durationMs: Date.now() - __obStartedAt, sawOutput: !!this.__obSawOutput, killed: this.isKilled, subtype: this.rateLimit?.subtype, retryAfterMs: this.rateLimit?.retryAfterMs });`;
 
 const MGR_TIMEOUT_ANCHOR = `                        this.process?.kill("SIGTERM");
                         this.emit("error", new Error(\`Request timed out after \${timeout}ms\`));`;
 const MGR_TIMEOUT_REPLACE = `                        this.process?.kill("SIGTERM");
                         appendBridgeEvent({ type: "subprocess.timeout", timeoutMs: timeout });
                         this.emit("error", new Error(\`Request timed out after \${timeout}ms\`));`;
+
+const MGR_SAWOUTPUT_ANCHOR = `                    this.buffer += data;`;
+const MGR_SAWOUTPUT_REPLACE = `                    this.__obSawOutput = true;
+                    this.buffer += data;`;
 
 // ---- routes.js edits ----
 const ROUTES_IMPORT = `import { createRateAwareCap } from "../rate-resilience/cap.js";`;
@@ -106,6 +108,27 @@ const ROUTES_CLOSE_REPLACE = `        subprocess.on("close", (code) => {
             resolve();
         });`;
 
+const ROUTES_RELEASE_ANCHOR = `function __obRelease() {
+  __OB_active--;
+  const next = __OB_waiters.shift();
+  if (next) next();
+}`;
+const ROUTES_RELEASE_REPLACE = `function __obRelease() {
+  __OB_active--;
+  // ${SENTINEL.replace("// ", "")} — drain only up to the (possibly shrunk) effective max; new arrivals ramp back via __obAcquire's fast path after cooldown
+  if (__OB_active < __obRateCap.currentMax()) {
+    const next = __OB_waiters.shift();
+    if (next) next();
+  }
+}`;
+
+const ROUTES_STREAM_CLOSE_ANCHOR = `        subprocess.on("close", (code) => { __obStopKeepAlive();
+            // Subprocess exited - ensure response is closed`;
+const ROUTES_STREAM_CLOSE_REPLACE = `        subprocess.on("close", (code) => { __obStopKeepAlive();
+            // ${SENTINEL.replace("// ", "")} — react to rate limits on the streaming path (cannot send 429 after headers, but shrink the cap)
+            if (subprocess.rateLimit) __obRateCap.onRateLimited(subprocess.rateLimit.subtype);
+            // Subprocess exited - ensure response is closed`;
+
 function patchFile(p, edits) {
   let src = fs.readFileSync(p, "utf8");
   if (src.includes(SENTINEL)) return { changed: false };
@@ -119,6 +142,7 @@ const mgrAlready = fs.readFileSync(managerPath, "utf8").includes(SENTINEL);
 const mgr = patchFile(managerPath, [
   [MGR_CLOSE_ANCHOR, MGR_CLOSE_REPLACE],
   [MGR_TIMEOUT_ANCHOR, MGR_TIMEOUT_REPLACE],
+  [MGR_SAWOUTPUT_ANCHOR, MGR_SAWOUTPUT_REPLACE],
 ]);
 if (mgr.changed) mgr.src = MGR_IMPORT + "\n" + mgr.src;
 
@@ -126,6 +150,8 @@ const routesAlready = fs.readFileSync(routesPath, "utf8").includes(SENTINEL);
 const rt = patchFile(routesPath, [
   [ROUTES_CAP_ANCHOR, ROUTES_CAP_REPLACE],
   [ROUTES_CLOSE_ANCHOR, ROUTES_CLOSE_REPLACE],
+  [ROUTES_RELEASE_ANCHOR, ROUTES_RELEASE_REPLACE],
+  [ROUTES_STREAM_CLOSE_ANCHOR, ROUTES_STREAM_CLOSE_REPLACE],
 ]);
 if (rt.changed) rt.src = ROUTES_IMPORT + "\n" + rt.src;
 

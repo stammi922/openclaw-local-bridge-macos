@@ -38,6 +38,10 @@ test("fresh patch: sentinel + modules + valid JS", () => {
   const r = fs.readFileSync(rt(d), "utf8");
   assert.ok(r.includes('__obRateCap.currentMax()'));
   assert.ok(r.includes('type: "rate_limited"'));
+  assert.ok(r.includes("if (__OB_active < __obRateCap.currentMax()) {"), "release gated on effective max");
+  assert.ok(r.includes("if (subprocess.rateLimit) __obRateCap.onRateLimited(subprocess.rateLimit.subtype)"), "streaming path shrinks cap");
+  assert.ok(m.includes("this.__obSawOutput = true;"), "sawOutput set in existing stdout listener");
+  assert.ok(!m.includes('this.process.stdout?.on("data", () => { __obSawOutput'), "no second stdout listener");
 });
 
 test("idempotent: re-run byte-identical", () => {
