@@ -80,10 +80,45 @@ device-auth issue, not a proxy issue: paired device `f3b9ed…` (in
 neither `operator.read` nor `operator.write`. `method-scopes` treats `read` as
 satisfied by `read` OR `write`, so that device was the only one that could emit
 the error. Fix = add `operator.read` to its `scopes`+`approvedScopes` and reload
-the gateway (`kill -USR1`). This lives in host-local state, **not** in this
-installer, so there's nothing to patch here — but a future installer could
-optionally backfill `operator.read` onto any `role=operator` device missing
-both read and write.
+the gateway (see the SIGUSR1 gotcha below — use `launchctl kickstart -k`, not a
+bare `kill -USR1`). This lives in host-local state, **not** in this installer,
+so there's nothing to patch here — but a future installer could optionally
+backfill `operator.read` onto any `role=operator` device missing both read and write.
+
+## Gateway gotcha: `kill -USR1` defers the restart silently until idle
+
+Also gateway-side, not a proxy concern — recorded here because it bit us while
+reloading the proxy/gateway during this work, and the symptom ("the restart did
+nothing") is easy to misdiagnose.
+
+A bare external `kill -USR1 <gateway-pid>` is **accepted** (not ignored) when
+`commands.restart=true` (the default; the SIGUSR1 policy is set at gateway
+startup from `isRestartEnabled(config)`). But the handler routes an accepted
+external signal into a **defer-until-idle** path: it waits until
+`queueSize + pendingReplies + activeEmbeddedRuns + activeTasks == 0` before
+actually restarting. In the bare-signal path that wait has **no timeout and logs
+nothing per poll** — the gateway log shows only `signal SIGUSR1 received` and
+then silence. So while any cron job or agent turn is in flight, the restart just
+sits pending indefinitely and looks like a no-op.
+
+Observed 2026-05-31: `SIGUSR1` sent while a cron session was assembling → no
+restart; the process was killed ~85s later before the work drained.
+
+The internal restart paths don't have this problem because they log and cap:
+- **control-UI / gateway restart tool / `openclaw` restart** → drains with a
+  logged `draining N active task(s)… timeout 300000ms` and a 5-min cap.
+- **`install.sh` reload** → writes a restart-intent file; the handler's intent
+  branch restarts immediately.
+
+**Guidance:**
+- Force an immediate restart: `launchctl kickstart -k gui/$UID/ai.openclaw.gateway`
+  (hard launchd kill — bypasses the drain).
+- Want graceful: use the gateway restart tool / control-UI / `openclaw` restart,
+  **not** `kill -USR1`.
+- Debugging a "silent" restart: the full structured gateway log (all levels) is
+  at `/tmp/openclaw/openclaw-<date>.log`. `~/Library/Logs/openclaw/gateway.log`
+  is stdout-only (info); stderr → `/dev/null` per the plist, so warns/errors can
+  be missing there.
 
 ## How to add a new proxy patch
 
