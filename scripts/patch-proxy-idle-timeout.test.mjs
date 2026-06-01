@@ -49,3 +49,15 @@ test("missing anchor exits non-zero", () => {
   fs.writeFileSync(mgrPath(root), "export class X {}\n");
   assert.throws(() => run(root));
 });
+
+test("--dry-run on an already-patched file is a clean no-op", () => {
+  const root = tmpRoot();
+  run(root);
+  const patched = fs.readFileSync(mgrPath(root), "utf8");
+  run(root, "--dry-run"); // already patched
+  assert.equal(fs.readFileSync(mgrPath(root), "utf8"), patched);
+});
+
+test("missing --root exits non-zero", () => {
+  assert.throws(() => execFileSync("node", [PATCHER], { encoding: "utf8", env: { ...process.env, PROXY_HOME: "" } }));
+});

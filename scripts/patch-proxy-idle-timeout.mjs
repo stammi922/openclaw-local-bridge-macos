@@ -25,7 +25,7 @@ function replaceOrDie(s, anchor, replacement, label) {
 const ANCHOR_ARM = `                }, timeout);`;
 const ARM = `                }, timeout);
                 // ${SENTINEL}
-                const __obIdleMs = parseInt(process.env.OPENCLAW_BRIDGE_IDLE_TIMEOUT_MS || "2400000", 10); // 40min
+                const __obIdleMs = Math.max(1, parseInt(process.env.OPENCLAW_BRIDGE_IDLE_TIMEOUT_MS || "2400000", 10) || 2400000); // 40min idle backstop; deliberately > the gateway's 30min stuck-session abort (gateway covers no-output-from-start; this covers went-silent-after-output, esp. cron paths)
                 this.__obResetIdle = () => {
                     if (this.idleTimeoutId) clearTimeout(this.idleTimeoutId);
                     this.idleTimeoutId = setTimeout(() => {
