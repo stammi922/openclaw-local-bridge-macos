@@ -132,6 +132,7 @@ check_sentinel "$ROUTES"  "@openclaw-bridge:stream-safety v1"     "stream-safety
 check_sentinel "$INDEX"   "@openclaw-bridge:eaddrinuse-retry v1" "eaddrinuse-retry (index.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:rate-resilience v1" "rate-resilience (manager.js)"
 check_sentinel "$ROUTES"  "@openclaw-bridge:rate-resilience v1" "rate-resilience (routes.js)"
+check_sentinel "$MANAGER" "@openclaw-bridge:idle-timeout v1"    "idle-timeout (manager.js)"
 
 # timeout VALUE (not just the sentinel) — historical drift had live value at 5min/1h
 if [[ -f "$MANAGER" ]] && grep -q "DEFAULT_TIMEOUT = 7200000" "$MANAGER"; then
