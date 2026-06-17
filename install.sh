@@ -20,6 +20,17 @@ REPO_ROOT="$HERE"
 # shellcheck source=lib/backup.sh
 . "$REPO_ROOT/lib/backup.sh"
 
+# ---------- Activate the in-repo pre-commit hook ---------------------------
+# Blocks accidental commits of secrets and docs/superpowers/ working notes.
+# Per-clone, idempotent; no-op outside a git work tree.
+HOOKS_DIR="$REPO_ROOT/scripts/git-hooks"
+if [ -d "$HOOKS_DIR" ] && [ -d "$REPO_ROOT/.git" ]; then
+    CURRENT_HOOKS_PATH="$(git -C "$REPO_ROOT" config --get core.hooksPath || true)"
+    if [ "$CURRENT_HOOKS_PATH" != "scripts/git-hooks" ]; then
+        git -C "$REPO_ROOT" config core.hooksPath scripts/git-hooks
+    fi
+fi
+
 # ---------- Defaults & flag parsing ----------------------------------------
 PORT_DEFAULT=3456
 FLAG_PORT=""

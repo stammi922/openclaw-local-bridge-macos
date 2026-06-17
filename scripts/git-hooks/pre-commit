@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# pre-commit: refuse to commit paths or content that look sensitive for a
+# public repository.
+#
+# Activate (per-clone, one-time):
+#     git config core.hooksPath scripts/git-hooks
+#
+# Bypass (only if you genuinely understand the risk):
+#     git commit --no-verify
+#
+# Add new patterns by editing FORBIDDEN_PATHS / FORBIDDEN_CONTENT below.
+
+set -euo pipefail
+
+# Patterns matched against staged file paths. Any match -> reject.
+FORBIDDEN_PATHS=(
+    '^docs/superpowers/'
+    '\.env$'
+    '\.env\.[^/]+$'
+    '(^|/)secrets?\.(json|ya?ml|env)$'
+    '(^|/)credentials?\.(json|ya?ml)$'
+    '(^|/)\.aws/credentials$'
+    '(^|/)id_rsa($|\.pub$)'
+    '(^|/)id_ed25519($|\.pub$)'
+)
+
+# Patterns matched against staged file *content*. Any match -> reject.
+# (Apply only to text files; binary blobs are skipped.)
+FORBIDDEN_CONTENT=(
+    'BEGIN (RSA |OPENSSH |EC |DSA |PGP )?PRIVATE KEY'
+    'AKIA[0-9A-Z]{16}'                            # AWS access key id
+    'aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}'
+    'sk-[A-Za-z0-9]{32,}'                         # OpenAI / Claude-style keys
+    'xox[bao]p?-[A-Za-z0-9-]{10,}'                # Slack tokens
+    'gh[pousr]_[A-Za-z0-9]{36,}'                  # GitHub tokens
+)
+
+red()    { printf '\033[0;31m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
+
+staged_files() {
+    git diff --cached --name-only --diff-filter=ACMR
+}
+
+fail=0
+
+# 1. Path-based check
+while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    for pat in "${FORBIDDEN_PATHS[@]}"; do
+        if printf '%s\n' "$f" | grep -Eq "$pat"; then
+            red   "BLOCKED path:    $f"
+            yellow "  matched pattern: $pat"
+            fail=1
+        fi
+    done
+done < <(staged_files)
+
+# 2. Content-based check (text files only)
+while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    [ -f "$f" ] || continue
+    if file "$f" 2>/dev/null | grep -qi 'binary\|image\|archive'; then
+        continue
+    fi
+    for pat in "${FORBIDDEN_CONTENT[@]}"; do
+        if git show ":$f" 2>/dev/null | grep -Eq "$pat"; then
+            red   "BLOCKED content: $f"
+            yellow "  matched pattern: $pat"
+            fail=1
+        fi
+    done
+done < <(staged_files)
+
+if [ "$fail" -ne 0 ]; then
+    red ""
+    red "pre-commit hook refused to commit."
+    yellow "If this is a false positive, edit scripts/git-hooks/pre-commit or use --no-verify (carefully)."
+    exit 1
+fi
+
+exit 0
