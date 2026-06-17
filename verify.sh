@@ -133,6 +133,9 @@ check_sentinel "$INDEX"   "@openclaw-bridge:eaddrinuse-retry v1" "eaddrinuse-ret
 check_sentinel "$MANAGER" "@openclaw-bridge:rate-resilience v1" "rate-resilience (manager.js)"
 check_sentinel "$ROUTES"  "@openclaw-bridge:rate-resilience v1" "rate-resilience (routes.js)"
 check_sentinel "$MANAGER" "@openclaw-bridge:idle-timeout v1"    "idle-timeout (manager.js)"
+check_sentinel "$ADAPTER" "@openclaw-bridge:media-passthrough v1" "media-passthrough (adapter)"
+check_sentinel "$MANAGER" "@openclaw-bridge:media-passthrough v1" "media-passthrough (manager.js)"
+check_sentinel "$ROUTES"  "@openclaw-bridge:media-passthrough v1" "media-passthrough (routes.js)"
 
 # timeout VALUE (not just the sentinel) — historical drift had live value at 5min/1h
 if [[ -f "$MANAGER" ]] && grep -q "DEFAULT_TIMEOUT = 7200000" "$MANAGER"; then
