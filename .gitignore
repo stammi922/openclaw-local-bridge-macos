@@ -29,3 +29,8 @@ dist/
 # reachable (ENOENT mkdir '/agents' → fallback to relative). The
 # directory contains auth-profiles.json with credentials — never commit.
 agents/
+
+# Superpowers / agent working notes (plans, specs, brainstorms, research).
+# Public repo: keep these out — they routinely contain infra/business detail
+# (device ids, cron names, hostnames). Enforced by scripts/git-hooks/pre-commit.
+docs/superpowers/
