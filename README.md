@@ -10,6 +10,13 @@ This is the macOS / launchd port of
 [`claude-max-api-proxy`](https://github.com/atalovesyou/claude-max-api-proxy)
 under `vendor/` so install works without touching the npm registry.
 
+> **Canonical repo / single source of truth.** This is the one repo to clone
+> and maintain for the bridge + proxy. An earlier `src`-based proxy rewrite
+> experiment is archived and **not** used here — see
+> [`docs/CONSOLIDATION.md`](docs/CONSOLIDATION.md) for the provenance audit and
+> the patch model. Every proxy modification is an idempotent, sentinel-guarded
+> patch script documented in [`docs/PROXY-LEARNINGS.md`](docs/PROXY-LEARNINGS.md).
+
 ---
 
 > ### ⚠️ Use at your own risk
@@ -74,10 +81,16 @@ When you run `./install.sh`:
    OpenAI `user` field so two concurrent `claude --session-id X` calls never
    run together; and adds streaming keep-alives + a fallback chunk so the
    gateway never receives an empty `[DONE]`. See "Runtime tuning" below.
-5. **Adds `CLAUDE_CODE_ENTRYPOINT=cli`** to your existing
+5. **Forwards image & file attachments to the model.** Inbound media (e.g.
+   Mattermost / webchat images, PDFs) arrives as OpenAI `image_url` / `file`
+   parts; the proxy converts them to Anthropic image/document content blocks
+   and feeds them to the `claude` CLI via its `--input-format stream-json`
+   mode — so the agent actually *sees* the picture instead of a dropped text
+   placeholder. Other binary types degrade to a `[attachment: …]` note.
+6. **Adds `CLAUDE_CODE_ENTRYPOINT=cli`** to your existing
    `ai.openclaw.gateway.plist` so the gateway tells Claude Code it's running
    from the CLI rather than the IDE.
-6. **Optionally** (asks first) adds `"permissions": {"allow": ["Bash(*)", "mcp__*"]}`
+7. **Optionally** (asks first) adds `"permissions": {"allow": ["Bash(*)", "mcp__*"]}`
    to `~/.claude/settings.json` so OpenClaw agents can run tools through
    Claude Code without being prompted for each call. **You can decline.**
 
@@ -202,6 +215,9 @@ to your local `claude` CLI in `--print` mode. OpenClaw is configured with an
 runs an agent turn, it talks OpenAI; the proxy translates and shells out to
 Claude Code; Claude Code answers using your Max subscription; the response
 flows back. Everything runs on `localhost`. No tokens leave your machine.
+Image and file attachments ride the same path: the proxy translates them to
+Anthropic content blocks and streams them to the CLI as a `stream-json` user
+message, so multimodal turns work end-to-end.
 
 ---
 
